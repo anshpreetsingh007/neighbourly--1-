@@ -1,0 +1,50 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", sans-serif;
+  
+  --color-amber-accent: #F5A623;
+  --color-emerald-status: #10b981;
+  --color-rose-status: #f43f5e;
+  --color-sky-status: #0ea5e9;
+}
+
+.glass {
+  @apply backdrop-blur-md border border-white/18;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.glass-light {
+  @apply backdrop-blur-md border border-white/18;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+body {
+
+  background: radial-gradient(at 0% 0%, #1e1b4b 0%, transparent 50%),
+                radial-gradient(at 100% 0%, #4c1d95 0%, transparent 50%),
+                radial-gradient(at 100% 100%, #0f172a 0%, transparent 50%),
+                radial-gradient(at 0% 100%, #1e1b4b 0%, transparent 50%);
+  background-color: #0f172a;
+  background-attachment: fixed;
+  @apply text-white min-h-screen font-sans antialiased;
+}
+
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+

@@ -1,0 +1,5 @@
+{
+  "name": "Neighbourly",
+  "description": "A production-ready, cross-platform hyperlocal handyman marketplace with real-time chat, secure payments, and glassmorphism design.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}

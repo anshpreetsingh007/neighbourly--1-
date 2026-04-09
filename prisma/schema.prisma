@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                 String         @id @default(uuid())
+  supabase_uid       String         @unique
+  email              String         @unique
+  name               String?
+  avatar_url         String?
+  bio                String?
+  neighbourhood      String?
+  lat                Float?
+  lng                Float?
+  roles              String         @default("POSTER")
+  phone              String?
+  phone_verified     Boolean        @default(false)
+  stripe_customer_id String?
+  stripe_connect_id  String?
+  is_id_verified     Boolean        @default(false)
+  is_banned          Boolean        @default(false)
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  applications       Application[]
+  posted_jobs        Job[]          @relation("PosterJobs")
+  sent_messages      Message[]
+  notifications      Notification[]
+  received_payments  Payment[]      @relation("PayeePayments")
+  made_payments      Payment[]      @relation("PayerPayments")
+  reports_made       Report[]
+  reviews_received   Review[]       @relation("Reviewee")
+  reviews_given      Review[]       @relation("Reviewer")
+}
+
+model Job {
+  id            String         @id @default(uuid())
+  poster_id     String
+  title         String
+  description   String
+  category      String
+  urgency       String
+  status        String         @default("OPEN")
+  lat           Float
+  lng           Float
+  address       String
+  budget_min    Float
+  budget_max    Float
+  is_recurring  Boolean        @default(false)
+  expires_at    DateTime?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  applications  Application[]
+  conversations Conversation[]
+  poster        User           @relation("PosterJobs", fields: [poster_id], references: [id])
+  photos        JobPhoto[]
+  payments      Payment[]
+  reviews       Review[]
+}
+
+model JobPhoto {
+  id     String @id @default(uuid())
+  job_id String
+  url    String
+  order  Int    @default(0)
+  job    Job    @relation(fields: [job_id], references: [id])
+}
+
+model Application {
+  id             String   @id @default(uuid())
+  job_id         String
+  helper_id      String
+  proposed_price Float
+  message        String
+  status         String   @default("PENDING")
+  created_at     DateTime @default(now())
+  helper         User     @relation(fields: [helper_id], references: [id])
+  job            Job      @relation(fields: [job_id], references: [id])
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  job_id          String?
+  participant_ids String
+  created_at      DateTime  @default(now())
+  job             Job?      @relation(fields: [job_id], references: [id])
+  messages        Message[]
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversation_id String
+  sender_id       String
+  body            String
+  photo_url       String?
+  type            String       @default("TEXT")
+  offer_price     Float?
+  offer_status    String?
+  read_at         DateTime?
+  created_at      DateTime     @default(now())
+  sender          User         @relation(fields: [sender_id], references: [id])
+  conversation    Conversation @relation(fields: [conversation_id], references: [id])
+}
+
+model Payment {
+  id                       String   @id @default(uuid())
+  job_id                   String
+  payer_id                 String
+  payee_id                 String
+  stripe_payment_intent_id String
+  amount                   Float
+  platform_fee             Float
+  tip                      Float    @default(0)
+  status                   String   @default("PENDING")
+  created_at               DateTime @default(now())
+  payee                    User     @relation("PayeePayments", fields: [payee_id], references: [id])
+  payer                    User     @relation("PayerPayments", fields: [payer_id], references: [id])
+  job                      Job      @relation(fields: [job_id], references: [id])
+}
+
+model Review {
+  id                    String   @id @default(uuid())
+  job_id                String
+  reviewer_id           String
+  reviewee_id           String
+  rating                Int
+  body                  String
+  photo_url             String?
+  ratings_punctuality   Int?
+  ratings_quality       Int?
+  ratings_communication Int?
+  ratings_value         Int?
+  is_published          Boolean  @default(false)
+  created_at            DateTime @default(now())
+  reviewee              User     @relation("Reviewee", fields: [reviewee_id], references: [id])
+  reviewer              User     @relation("Reviewer", fields: [reviewer_id], references: [id])
+  job                   Job      @relation(fields: [job_id], references: [id])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  user_id    String
+  type       String
+  title      String
+  body       String
+  data       String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+  user       User      @relation(fields: [user_id], references: [id])
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  reporter_id String
+  target_type String
+  target_id   String
+  reason      String
+  status      String   @default("PENDING")
+  created_at  DateTime @default(now())
+  reporter    User     @relation(fields: [reporter_id], references: [id])
+}
