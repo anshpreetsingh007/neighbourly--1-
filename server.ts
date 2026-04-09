@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
-import { createServer as createViteServer } from 'vite';
+// import { createServer as createViteServer } from 'vite'; (Moved to dynamic import)
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
@@ -436,7 +436,8 @@ async function startServer() {
   });
 
   // Vite Middleware
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -450,11 +451,21 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  return app;
+}
+
+const appPromise = startServer();
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  appPromise.then(app => {
+    app.listen(3000, () => {
+      console.log(`Server running on http://localhost:3000`);
+    });
   });
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-});
+export default async (req: any, res: any) => {
+  const app = await appPromise;
+  return app(req, res);
+};
