@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Note: Database_passwoerd has been corrected to DATABASE_URL in .env.local
 const prisma = new PrismaClient();
 
 // Configure Cloudinary
@@ -443,7 +444,9 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
+    // Only serve static files if NOT on Vercel. 
+    // Vercel serves the 'dist' folder automatically from its global CDN.
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
