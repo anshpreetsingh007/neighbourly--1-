@@ -5,11 +5,11 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-// Add auth interceptor
+// Add auth interceptor. The API identifies users by Supabase UID, not a bearer token.
 api.interceptors.request.use(async (config) => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`;
+  if (session?.user) {
+    config.headers['x-supabase-uid'] = session.user.id;
   }
   return config;
 });

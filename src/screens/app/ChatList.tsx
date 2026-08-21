@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GlassCard } from '../../components/UI';
-import { Search, ChevronRight, Loader2, MessageSquare } from 'lucide-react';
+import { Search, ChevronRight, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
+import { Button } from '../../components/UI';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,22 +12,27 @@ export const ChatList: React.FC = () => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const fetchConversations = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setLoadError(false);
+    try {
+      const { data } = await axios.get('/api/conversations', {
+        headers: { 'x-supabase-uid': user.id }
+      });
+      setConversations(data);
+    } catch (err) {
+      console.error('Failed to fetch conversations:', err);
+      setLoadError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchConversations = async () => {
-      if (!user) return;
-      try {
-        const { data } = await axios.get('/api/conversations', {
-          headers: { 'x-supabase-uid': user.id }
-        });
-        setConversations(data);
-      } catch (err) {
-        console.error('Failed to fetch conversations:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchConversations();
   }, [user]);
 
@@ -57,6 +63,12 @@ export const ChatList: React.FC = () => {
           <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
             <Loader2 className="w-8 h-8 text-amber-accent animate-spin" />
             <p className="text-sm font-bold uppercase tracking-widest">Loading Chats...</p>
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
+            <AlertTriangle className="w-8 h-8 text-rose-status mx-auto" />
+            <p className="text-white/40 font-bold uppercase tracking-widest text-sm">Couldn't load conversations</p>
+            <Button variant="secondary" size="sm" onClick={fetchConversations}>Retry</Button>
           </div>
         ) : filteredConversations.length > 0 ? (
           filteredConversations.map((chat) => {

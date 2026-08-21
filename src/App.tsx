@@ -1,5 +1,6 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import axios from 'axios';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Welcome } from './screens/auth/Welcome';
 import { SignIn } from './screens/auth/SignIn';
@@ -12,9 +13,31 @@ import { Account } from './screens/app/Account';
 import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
+import { NotFound } from './screens/NotFound';
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
-  const { session, isLoading } = useAuth();
+  const { session, user, isLoading } = useAuth();
+  const location = useLocation();
+  const [profileChecked, setProfileChecked] = useState(false);
+  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    axios.get('/api/users/me', { headers: { 'x-supabase-uid': user.id } })
+      .then(({ data }) => {
+        if (!cancelled) setNeedsProfileSetup(!data?.neighbourhood);
+      })
+      .catch(() => {
+        if (!cancelled) setNeedsProfileSetup(false);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileChecked(true);
+      });
+    return () => { cancelled = true; };
+    // Re-check whenever we land on a new route so the flag doesn't go stale
+    // right after ProfileSetup saves and navigates away.
+  }, [user, location.pathname]);
 
   if (isLoading) {
     return (
@@ -26,6 +49,10 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   if (!session) {
     return <Navigate to="/welcome" replace />;
+  }
+
+  if (profileChecked && needsProfileSetup && location.pathname !== '/profile-setup') {
+    return <Navigate to="/profile-setup" replace />;
   }
 
   return <>{children}</>;
@@ -59,7 +86,7 @@ export default function App() {
 
 
           {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Router>
     </AuthProvider>

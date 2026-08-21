@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare } from 'lucide-react';
+import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
@@ -26,18 +26,23 @@ export const Home: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const fetchJobs = async () => {
+    setIsLoading(true);
+    setLoadError(false);
+    try {
+      const { data } = await axios.get('/api/jobs');
+      setJobs(data);
+    } catch (err) {
+      console.error('Failed to fetch jobs:', err);
+      setLoadError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const { data } = await axios.get('/api/jobs');
-        setJobs(data);
-      } catch (err) {
-        console.error('Failed to fetch jobs:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchJobs();
   }, []);
 
@@ -148,7 +153,12 @@ export const Home: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button variant="secondary" className="p-5 rounded-2xl border border-white/5">
+        <Button
+          variant="secondary"
+          className="p-5 rounded-2xl border border-white/5 opacity-50 cursor-not-allowed"
+          disabled
+          title="Filters are coming soon"
+        >
           <Filter className="w-6 h-6" />
         </Button>
       </div>
@@ -182,13 +192,19 @@ export const Home: React.FC = () => {
       <section className="space-y-6">
         <div className="flex items-center justify-between px-2">
           <h3 className="text-2xl font-display font-bold tracking-tight">Nearby Jobs</h3>
-          <button className="text-amber-accent text-xs font-black uppercase tracking-widest hover:opacity-70 transition-opacity">See All</button>
         </div>
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
             <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
             <p className="text-[10px] font-black tracking-[0.2em] uppercase">Finding Gigs...</p>
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-rose-status/30 space-y-4">
+            <AlertTriangle className="w-10 h-10 text-rose-status mx-auto" />
+            <p className="text-white/40 font-black tracking-widest uppercase text-sm">Couldn't load jobs</p>
+            <p className="text-[10px] text-white/20 uppercase tracking-tight">Check your connection and try again</p>
+            <Button variant="secondary" size="sm" onClick={fetchJobs}>Retry</Button>
           </div>
         ) : filteredJobs.length > 0 ? (
           <div className="grid md:grid-cols-2 gap-6">

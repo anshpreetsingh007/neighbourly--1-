@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard, Button } from '../../components/UI';
-import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock } from 'lucide-react';
+import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -57,10 +57,14 @@ export const MapView: React.FC = () => {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([40.7128, -74.0060]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchJobs = async () => {
+    setIsLoading(true);
+    setLoadError(false);
     try {
       const { data } = await axios.get('/api/jobs');
       setJobs(data);
@@ -69,10 +73,16 @@ export const MapView: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
+      setLoadError(true);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const visibleJobs = jobs.filter(job =>
+    job.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    job.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   useEffect(() => {
     fetchJobs();
@@ -140,7 +150,7 @@ export const MapView: React.FC = () => {
           />
           <MapCenterer center={mapCenter} />
           
-          {!isLoading && jobs.map((job) => (
+          {!isLoading && visibleJobs.map((job) => (
             <JobMarker 
               key={job.id} 
               job={job} 
@@ -161,11 +171,18 @@ export const MapView: React.FC = () => {
           <input
             type="text"
             placeholder="Search local jobs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full glass rounded-3xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium text-white"
           />
         </div>
         <div className="pointer-events-auto">
-            <Button variant="secondary" className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80">
+            <Button
+              variant="secondary"
+              className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80 opacity-50 cursor-not-allowed"
+              disabled
+              title="Filters are coming soon"
+            >
             <Filter className="w-6 h-6" />
             </Button>
         </div>
@@ -187,6 +204,17 @@ export const MapView: React.FC = () => {
              <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-white/5">
                 <Loader2 className="w-12 h-12 text-amber-accent animate-spin" />
                 <p className="text-[10px] font-black tracking-[0.2em] uppercase text-white/60">Scanning Area...</p>
+             </div>
+        </div>
+      )}
+
+      {/* Error Overlay */}
+      {!isLoading && loadError && (
+        <div className="absolute inset-0 bg-[#080a12]/60 backdrop-blur-sm z-50 flex items-center justify-center">
+             <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-rose-status/20 text-center">
+                <AlertTriangle className="w-12 h-12 text-rose-status" />
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-white/60">Couldn't load jobs</p>
+                <Button variant="secondary" size="sm" onClick={fetchJobs}>Retry</Button>
              </div>
         </div>
       )}

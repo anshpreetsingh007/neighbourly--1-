@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard, Button } from '../../components/UI';
-import { ChevronLeft, Send, Camera, MoreVertical, Phone, Check, CheckCheck, Loader2, MessageSquare } from 'lucide-react';
+import { ChevronLeft, Send, Camera, MoreVertical, Phone, Check, CheckCheck, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,22 +16,26 @@ export const ChatThread: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  
+
   const socket = useSocket('chat');
 
-  useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const { data } = await axios.get(`/api/conversations/${id}/messages`);
-        setMessages(data);
-      } catch (err) {
-        console.error('Failed to fetch messages:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const fetchMessages = async () => {
+    setIsLoading(true);
+    setLoadError(false);
+    try {
+      const { data } = await axios.get(`/api/conversations/${id}/messages`);
+      setMessages(data);
+    } catch (err) {
+      console.error('Failed to fetch messages:', err);
+      setLoadError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchMessages();
   }, [id]);
 
@@ -112,6 +116,12 @@ export const ChatThread: React.FC = () => {
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 text-amber-accent animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+            <AlertTriangle className="w-12 h-12 text-rose-status" />
+            <p className="font-bold uppercase tracking-widest text-sm text-white/50">Couldn't load messages</p>
+            <Button variant="secondary" size="sm" onClick={fetchMessages}>Retry</Button>
           </div>
         ) : messages.length > 0 ? (
           messages.map((msg, idx) => {

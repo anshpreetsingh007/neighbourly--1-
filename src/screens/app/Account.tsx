@@ -3,14 +3,15 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { GlassCard, Button } from '../../components/UI';
 import axios from 'axios';
-import { 
-  Settings, 
-  Bell, 
-  CreditCard, 
-  ShieldCheck, 
-  LogOut, 
-  ChevronRight, 
-  Star, 
+import { clsx } from 'clsx';
+import {
+  Settings,
+  Bell,
+  CreditCard,
+  ShieldCheck,
+  LogOut,
+  ChevronRight,
+  Star,
   Briefcase,
   Smartphone
 } from 'lucide-react';
@@ -40,6 +41,10 @@ export const Account: React.FC = () => {
     { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50' },
   ];
 
+  const handleMenuClick = (label: string) => {
+    alert(`${label} isn't available yet. Coming soon.`);
+  };
+
   return (
     <div className="p-6 space-y-8">
       {/* Profile Header */}
@@ -61,9 +66,9 @@ export const Account: React.FC = () => {
         </div>
         
         <div>
-          <h1 className="text-3xl font-display font-bold">{user?.user_metadata?.full_name || 'Anshpreet Singh'}</h1>
+          <h1 className="text-3xl font-display font-bold">{user?.user_metadata?.full_name || profile?.name || 'Neighbour'}</h1>
           <p className="text-white/50 font-medium">
-            {profile?.neighbourhood || 'Downtown, Brooklyn'} • Member since {new Date(user?.created_at || Date.now()).getFullYear()}
+            {profile?.neighbourhood || 'Neighbourhood not set'} • Member since {new Date(user?.created_at || Date.now()).getFullYear()}
           </p>
         </div>
 
@@ -86,14 +91,24 @@ export const Account: React.FC = () => {
       {/* Menu */}
       <section className="space-y-3">
         {menuItems.map((item) => (
-          <GlassCard key={item.label} hover className="p-4 flex items-center justify-between cursor-pointer">
-            <div className="flex items-center gap-4">
-              <div className={clsx("p-3 rounded-xl bg-white/5", item.color)}>
-                <item.icon className="w-6 h-6" />
+          <GlassCard
+            key={item.label}
+            hover
+            className="p-4 flex items-center justify-between cursor-pointer"
+          >
+            <button
+              type="button"
+              onClick={() => handleMenuClick(item.label)}
+              className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
+            >
+              <div className="flex items-center gap-4">
+                <div className={clsx("p-3 rounded-xl bg-white/5", item.color)}>
+                  <item.icon className="w-6 h-6" />
+                </div>
+                <span className="font-bold">{item.label}</span>
               </div>
-              <span className="font-bold">{item.label}</span>
-            </div>
-            <ChevronRight className="w-5 h-5 text-white/20" />
+              <ChevronRight className="w-5 h-5 text-white/20" />
+            </button>
           </GlassCard>
         ))}
       </section>
@@ -115,5 +130,3 @@ export const Account: React.FC = () => {
     </div>
   );
 };
-
-import { clsx } from 'clsx';

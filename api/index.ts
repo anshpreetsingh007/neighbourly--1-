@@ -31,7 +31,7 @@ async function startServer() {
     }
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Security Middleware
   app.use(helmet({
@@ -454,21 +454,21 @@ async function startServer() {
     });
   }
 
-  return app;
+  return { app, httpServer, port: PORT };
 }
 
 const appPromise = startServer();
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
-  appPromise.then(app => {
-    app.listen(3000, () => {
-      console.log(`Server running on http://localhost:3000`);
+  appPromise.then(({ httpServer, port }) => {
+    httpServer.listen(port, () => {
+      console.log(`Server running on http://localhost:${port}`);
     });
   });
 }
 
 export default async (req: any, res: any) => {
-  const app = await appPromise;
+  const { app } = await appPromise;
   return app(req, res);
 };

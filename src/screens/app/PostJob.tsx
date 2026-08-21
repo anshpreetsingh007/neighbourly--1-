@@ -34,6 +34,7 @@ export const PostJob: React.FC = () => {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [coords, setCoords] = useState<[number, number]>([40.7128, -74.0060]);
   const [formData, setFormData] = useState({
     title: '',
@@ -132,13 +133,34 @@ export const PostJob: React.FC = () => {
     }
   };
 
+  const validateStep = (): string | null => {
+    if (step === 1) {
+      if (!formData.title.trim()) return 'Give the job a title.';
+      if (!formData.category) return 'Pick a category.';
+    }
+    if (step === 2) {
+      if (!formData.description.trim()) return 'Add a description so helpers know what to expect.';
+    }
+    if (step === 3) {
+      if (!formData.location.trim()) return 'Enter a location for the job.';
+    }
+    return null;
+  };
+
   const nextStep = async () => {
+    const error = validateStep();
+    if (error) {
+      setStepError(error);
+      return;
+    }
+    setStepError(null);
+
     if (step === 3) {
       if (!user) {
         alert('You must be signed in to post a job.');
         return;
       }
-      
+
       setIsSubmitting(true);
       try {
         const res = await axios.post('/api/jobs', {
@@ -170,7 +192,10 @@ export const PostJob: React.FC = () => {
       setStep(s => s + 1);
     }
   };
-  const prevStep = () => setStep(s => s - 1);
+  const prevStep = () => {
+    setStepError(null);
+    setStep(s => s - 1);
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -423,17 +448,24 @@ export const PostJob: React.FC = () => {
       </div>
 
       {step < 4 && (
-        <div className="mt-8 flex gap-4">
-          {step > 1 && (
-            <Button variant="secondary" className="flex-1" onClick={prevStep}>
-              Back
-            </Button>
+        <>
+          {stepError && (
+            <div className="mt-6 bg-rose-status/20 border border-rose-status/50 text-rose-status p-3 rounded-xl text-sm text-center">
+              {stepError}
+            </div>
           )}
-          <Button className="flex-1" onClick={nextStep} isLoading={isSubmitting}>
-            {step === 3 ? 'Post Job' : 'Continue'}
-            <ChevronRight className="w-5 h-5" />
-          </Button>
-        </div>
+          <div className="mt-8 flex gap-4">
+            {step > 1 && (
+              <Button variant="secondary" className="flex-1" onClick={prevStep}>
+                Back
+              </Button>
+            )}
+            <Button className="flex-1" onClick={nextStep} isLoading={isSubmitting}>
+              {step === 3 ? 'Post Job' : 'Continue'}
+              <ChevronRight className="w-5 h-5" />
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
