@@ -63,9 +63,10 @@ export const ChatThread: React.FC = () => {
   const handleSendMessage = () => {
     if (!newMessage.trim() || !socket || !user) return;
 
+    // No sender_id: the server attributes the message to the authenticated
+    // socket, so anything we sent here would be ignored anyway.
     socket.emit('send_message', {
       conversation_id: id,
-      sender_id: user.id,
       body: newMessage
     });
 
