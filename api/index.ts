@@ -47,6 +47,7 @@ if (!supabaseAuth) {
 
 interface AuthedRequest extends Request {
   authUser?: SupabaseUser;
+  dbUser?: Awaited<ReturnType<typeof getOrCreateDbUser>>;
 }
 
 /**
@@ -74,7 +75,16 @@ const requireAuth: RequestHandler = async (req, res, next) => {
     if (error || !data?.user) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    // Resolve the local row once here so every route shares it, and so a ban is
+    // enforced on every authenticated path - including /api/uploads/sign, which
+    // does not otherwise need a DB user.
+    const dbUser = await getOrCreateDbUser(data.user);
+    if (dbUser.is_banned) {
+      return res.status(403).json({ error: 'This account has been suspended' });
+    }
+
     (req as AuthedRequest).authUser = data.user;
+    (req as AuthedRequest).dbUser = dbUser;
     next();
   } catch (err) {
     console.error('Token verification failed:', err);
@@ -82,12 +92,37 @@ const requireAuth: RequestHandler = async (req, res, next) => {
   }
 };
 
+/**
+ * The only User columns another user is ever allowed to see. Everything else on
+ * the row - email, phone, supabase_uid, lat/lng, stripe ids, is_banned - stays
+ * server-side. Use this wherever a User is attached to a response that someone
+ * other than that user will read.
+ */
+const PUBLIC_USER_SELECT = {
+  id: true,
+  name: true,
+  avatar_url: true,
+  bio: true,
+  neighbourhood: true,
+  is_id_verified: true,
+  created_at: true,
+} as const;
+
 /** Narrows a request that has already passed through requireAuth. */
 function authed(req: Request): SupabaseUser {
   const user = (req as AuthedRequest).authUser;
   if (!user) {
     // Unreachable via requireAuth; guards against a route wired up without it.
     throw new Error('authed() called on a route that is not behind requireAuth');
+  }
+  return user;
+}
+
+/** The local User row for the caller, resolved once by requireAuth. */
+function currentUser(req: Request) {
+  const user = (req as AuthedRequest).dbUser;
+  if (!user) {
+    throw new Error('currentUser() called on a route that is not behind requireAuth');
   }
   return user;
 }
@@ -137,7 +172,9 @@ const authenticateSocket = async (socket: any, next: (err?: Error) => void) => {
   try {
     const { data, error } = await supabaseAuth.auth.getUser(token);
     if (error || !data?.user) return next(new Error('Invalid or expired token'));
-    socket.data.user = await getOrCreateDbUser(data.user);
+    const dbUser = await getOrCreateDbUser(data.user);
+    if (dbUser.is_banned) return next(new Error('This account has been suspended'));
+    socket.data.user = dbUser;
     next();
   } catch (err) {
     console.error('Socket token verification failed:', err);
@@ -200,7 +237,7 @@ async function startServer() {
             body,
             type: 'TEXT'
           },
-          include: { sender: true }
+          include: { sender: { select: PUBLIC_USER_SELECT } }
         });
         chatNamespace.to(conversation_id).emit('receive_message', message);
       } catch (err) {
@@ -228,8 +265,8 @@ async function startServer() {
   app.get('/api/jobs', requireAuth, async (req, res) => {
     try {
       const jobs = await prisma.job.findMany({
-        include: { 
-          poster: true,
+        include: {
+          poster: { select: PUBLIC_USER_SELECT },
           photos: true,
           applications: true
         },
@@ -258,7 +295,7 @@ async function startServer() {
 
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
 
       const job = await prisma.job.create({
         data: {
@@ -279,7 +316,7 @@ async function startServer() {
             }))
           }
         },
-        include: { photos: true, poster: true }
+        include: { photos: true, poster: { select: PUBLIC_USER_SELECT } }
       });
 
       res.status(201).json(job);
@@ -293,11 +330,11 @@ async function startServer() {
     try {
       const job = await prisma.job.findUnique({
         where: { id: req.params.id },
-        include: { 
-          poster: true,
+        include: {
+          poster: { select: PUBLIC_USER_SELECT },
           photos: true,
           applications: {
-            include: { helper: true }
+            include: { helper: { select: PUBLIC_USER_SELECT } }
           }
         }
       });
@@ -311,7 +348,7 @@ async function startServer() {
   // Users API
   app.get('/api/users/me', requireAuth, async (req, res) => {
     try {
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
       res.json(user);
     } catch (err) {
       console.error('Failed to fetch/sync user:', err);
@@ -346,7 +383,7 @@ async function startServer() {
   // Conversations & Messages API
   app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
 
       // 'contains' narrows in the DB, but it is a substring match on a joined
       // string, so the exact membership filter below is what actually decides.
@@ -373,7 +410,9 @@ async function startServer() {
       const conversationsWithParticipants = await Promise.all(conversations.map(async (conv) => {
         const pIds = conv.participant_ids.split(',');
         const otherId = pIds.find(id => id !== user.id);
-        const otherUser = otherId ? await prisma.user.findUnique({ where: { id: otherId } }) : null;
+        const otherUser = otherId
+          ? await prisma.user.findUnique({ where: { id: otherId }, select: PUBLIC_USER_SELECT })
+          : null;
         return { ...conv, otherUser };
       }));
 
@@ -386,7 +425,7 @@ async function startServer() {
 
   app.get('/api/conversations/:id/messages', requireAuth, async (req, res) => {
     try {
-      const me = await getOrCreateDbUser(authed(req));
+      const me = currentUser(req);
 
       // Reading a thread requires being in it.
       if (!(await isParticipant(req.params.id, me.id))) {
@@ -395,7 +434,7 @@ async function startServer() {
 
       const messages = await prisma.message.findMany({
         where: { conversation_id: req.params.id },
-        include: { sender: true },
+        include: { sender: { select: PUBLIC_USER_SELECT } },
         orderBy: { created_at: 'asc' }
       });
       res.json(messages);
@@ -413,7 +452,7 @@ async function startServer() {
 
     try {
       // You may only open a conversation you are yourself part of.
-      const me = await getOrCreateDbUser(authed(req));
+      const me = currentUser(req);
       if (!participant_ids.includes(me.id)) {
         return res.status(403).json({ error: 'You cannot create a conversation you are not part of' });
       }
@@ -451,9 +490,9 @@ async function startServer() {
     try {
       // The helper is whoever holds the token. A helper_supabase_uid in the
       // body is ignored entirely.
-      const helper = await getOrCreateDbUser(authed(req));
+      const helper = currentUser(req);
 
-      const job = await prisma.job.findUnique({ where: { id: job_id }, include: { poster: true } });
+      const job = await prisma.job.findUnique({ where: { id: job_id } });
       if (!job) return res.status(404).json({ error: 'Job not found' });
 
       if (job.poster_id === helper.id) {
