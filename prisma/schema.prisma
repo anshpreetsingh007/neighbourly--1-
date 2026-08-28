@@ -12,6 +12,8 @@ model User {
   supabase_uid       String         @unique
   email              String         @unique
   name               String?
+  first_name         String?
+  last_name          String?
   avatar_url         String?
   bio                String?
   neighbourhood      String?

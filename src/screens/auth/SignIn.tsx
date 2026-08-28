@@ -8,6 +8,8 @@ import { Mail, Lock, Chrome, Facebook, Apple } from 'lucide-react';
 export const SignIn: React.FC = () => {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +34,15 @@ export const SignIn: React.FC = () => {
       const { error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          // Lands in user_metadata, which getOrCreateDbUser() reads on the
+          // server to build the profile - no extra request needed.
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          },
+        },
       });
       if (error) {
         setError(error.message);
@@ -99,6 +110,41 @@ export const SignIn: React.FC = () => {
           )}
 
           <form onSubmit={handleAuth} className="space-y-4">
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70 ml-1">First Name</label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    placeholder="Karan"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70 ml-1">
+                    Last Name <span className="text-white/30 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    placeholder="Pabla"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isSignUp && (
+              <p className="text-xs text-white/40 ml-1 -mt-1">
+                Neighbours will see you as "{firstName.trim() || 'Karan'}
+                {lastName.trim() ? ` ${lastName.trim().charAt(0).toUpperCase()}.` : ''}"
+              </p>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-white/70 ml-1">Email Address</label>
               <div className="relative">

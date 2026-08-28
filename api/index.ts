@@ -128,15 +128,44 @@ function currentUser(req: Request) {
 }
 
 /**
+ * The name other users see: first name plus a last initial, e.g. "Karan P.".
+ * Full surnames stay server-side - people meet strangers at their homes through
+ * this app, so a browsable list of full names is a safety problem, not just a
+ * privacy one. `name` is the only one of these in PUBLIC_USER_SELECT.
+ */
+function publicDisplayName(first?: string | null, last?: string | null) {
+  const f = (first || '').trim();
+  const l = (last || '').trim();
+  if (!f && !l) return 'Anonymous Neighbour';
+  if (!l) return f;
+  return `${f} ${l.charAt(0).toUpperCase()}.`;
+}
+
+/** Pulls whatever name parts a provider gave us out of the token's claims. */
+function nameFromMetadata(metadata: Record<string, unknown>) {
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+  let first = str(metadata.first_name) || str(metadata.given_name);
+  let last = str(metadata.last_name) || str(metadata.family_name);
+
+  // OAuth providers usually give one combined name; split on the first space.
+  if (!first) {
+    const full = str(metadata.full_name) || str(metadata.name);
+    if (full) {
+      const parts = full.split(/\s+/);
+      first = parts.shift() || '';
+      last = last || parts.join(' ');
+    }
+  }
+  return { first, last };
+}
+
+/**
  * Maps a verified Supabase user onto our local User row, creating it on first
  * sight. Profile details come from the token's own claims, never from the body.
  */
 async function getOrCreateDbUser(authUser: SupabaseUser) {
   const metadata = (authUser.user_metadata || {}) as Record<string, unknown>;
-  const name =
-    (typeof metadata.full_name === 'string' && metadata.full_name) ||
-    (typeof metadata.name === 'string' && metadata.name) ||
-    'Anonymous Neighbour';
+  const { first, last } = nameFromMetadata(metadata);
 
   return prisma.user.upsert({
     where: { supabase_uid: authUser.id },
@@ -144,8 +173,12 @@ async function getOrCreateDbUser(authUser: SupabaseUser) {
     create: {
       supabase_uid: authUser.id,
       email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
-      name,
-      neighbourhood: 'Local area',
+      first_name: first || null,
+      last_name: last || null,
+      name: publicDisplayName(first, last),
+      // Deliberately left null: AuthGuard treats a missing neighbourhood as
+      // "this profile is incomplete" and routes the user to /profile-setup.
+      // Filling in a placeholder here would silently skip that step.
     },
   });
 }
@@ -359,15 +392,26 @@ async function startServer() {
   app.post('/api/users/profile', requireAuth, async (req, res) => {
     // Identity comes from the token; only profile fields are taken from the body.
     const authUser = authed(req);
-    const { name, neighbourhood, avatar_url } = req.body;
+    const { first_name, last_name, neighbourhood, avatar_url } = req.body;
+
+    const first = typeof first_name === 'string' ? first_name.trim() : '';
+    const last = typeof last_name === 'string' ? last_name.trim() : '';
+
+    if (!first) {
+      return res.status(400).json({ error: 'First name is required' });
+    }
+
+    const name = publicDisplayName(first, last);
 
     try {
       const user = await prisma.user.upsert({
         where: { supabase_uid: authUser.id },
-        update: { name, neighbourhood, avatar_url },
+        update: { first_name: first, last_name: last || null, name, neighbourhood, avatar_url },
         create: {
           supabase_uid: authUser.id,
           email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
+          first_name: first,
+          last_name: last || null,
           name,
           neighbourhood,
           avatar_url
