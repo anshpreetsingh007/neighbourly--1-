@@ -10,9 +10,12 @@ import { PostJob } from './screens/app/PostJob';
 import { ChatList } from './screens/app/ChatList';
 import { ChatThread } from './screens/app/ChatThread';
 import { Account } from './screens/app/Account';
+import { MyJobs } from './screens/app/MyJobs';
 import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
 import { NotFound } from './screens/NotFound';
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -28,10 +31,10 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     setIsCheckingProfile(true);
     axios.get('/api/users/me')
       .then(({ data }) => {
-        // Incomplete if either is missing: pre-existing accounts have a
-        // neighbourhood but no first_name, and would otherwise stay
-        // "Anonymous Neighbour" with no way to fix it.
-        if (!cancelled) setNeedsProfileSetup(!data?.neighbourhood || !data?.first_name);
+        // Only a missing name blocks entry. Location is asked for later, at the
+        // point it actually buys the user something (posting or applying) -
+        // demanding it up front is friction before they have seen a single job.
+        if (!cancelled) setNeedsProfileSetup(!data?.first_name);
       })
       .catch(() => {
         if (!cancelled) setNeedsProfileSetup(false);
@@ -78,8 +81,10 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Router>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AuthProvider>
+        <Router>
         <Routes>
           {/* Auth Routes */}
           <Route path="/welcome" element={<Welcome />} />
@@ -98,6 +103,7 @@ export default function App() {
             <Route path="chat" element={<ChatList />} />
             <Route path="chat/:id" element={<ChatThread />} />
             <Route path="account" element={<Account />} />
+            <Route path="my-jobs" element={<MyJobs />} />
             <Route path="profile-setup" element={<ProfileSetup />} />
             {/* Add more routes here */}
           </Route>
@@ -106,8 +112,10 @@ export default function App() {
           {/* Catch all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Router>
-    </AuthProvider>
+        </Router>
+        </AuthProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 

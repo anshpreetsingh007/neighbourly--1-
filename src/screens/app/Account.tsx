@@ -1,6 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 import { GlassCard, Button } from '../../components/UI';
 import axios from 'axios';
 import { clsx } from 'clsx';
@@ -18,6 +20,8 @@ import {
 
 export const Account: React.FC = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const [profile, setProfile] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -42,7 +46,7 @@ export const Account: React.FC = () => {
   ];
 
   const handleMenuClick = (label: string) => {
-    alert(`${label} isn't available yet. Coming soon.`);
+    showToast(`${label} isn't available yet - coming soon.`);
   };
 
   return (
@@ -90,6 +94,22 @@ export const Account: React.FC = () => {
 
       {/* Menu */}
       <section className="space-y-3">
+        <GlassCard hover className="p-4 flex items-center justify-between cursor-pointer">
+          <button
+            type="button"
+            onClick={() => navigate('/my-jobs')}
+            className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-white/5 text-amber-accent">
+                <Briefcase className="w-6 h-6" />
+              </div>
+              <span className="font-bold">Your Jobs &amp; Applicants</span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-white/20" />
+          </button>
+        </GlassCard>
+
         {menuItems.map((item) => (
           <GlassCard
             key={item.label}

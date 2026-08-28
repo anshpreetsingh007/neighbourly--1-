@@ -183,6 +183,68 @@ async function getOrCreateDbUser(authUser: SupabaseUser) {
   });
 }
 
+/**
+ * Stable pseudo-random offset in [-1, 1) derived from a string, so a given job
+ * always blurs to the same spot instead of jittering on every request (which
+ * would let someone average many reads back to the true position).
+ */
+function stableUnit(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (Math.imul(h, 31) + seed.charCodeAt(i)) | 0;
+  return ((h >>> 0) % 100000) / 100000 * 2 - 1;
+}
+
+/**
+ * Drops the street line from a geocoded address, keeping the neighbourhood and
+ * city. "58 Corner Ridge Mews NE, Cornerstone, Calgary, Alberta" becomes
+ * "Cornerstone, Calgary" - useful for orienting, useless for finding the house.
+ */
+function coarseArea(address?: string | null) {
+  if (!address) return null;
+  const parts = address.split(',').map(p => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts.slice(1, 3).join(', ') : 'Approximate area';
+}
+
+/**
+ * What a job looks like to someone who is not entitled to the exact address.
+ *
+ * Browsing users get the neighbourhood and a pin blurred by a few hundred
+ * metres - enough to judge "is this near me?", not enough to identify the house.
+ * A public list of addresses plus "nobody home Tuesday, fence is broken" is a
+ * safety problem, not just a privacy one.
+ *
+ * The full address is revealed to the poster, and to a helper whose application
+ * has been ACCEPTED.
+ */
+function jobForViewer(job: any, viewerId: string) {
+  const isPoster = job.poster_id === viewerId;
+  const all = job.applications || [];
+  const mine = all.find((a: any) => a.helper_id === viewerId);
+  const isAcceptedHelper = mine?.status === 'ACCEPTED';
+
+  // Who else applied, and what they bid, is the poster's business alone.
+  // Everyone else sees only their own application plus a count.
+  const base = {
+    ...job,
+    applications: isPoster ? all : mine ? [mine] : [],
+    application_count: all.length,
+  };
+
+  if (isPoster || isAcceptedHelper) {
+    return { ...base, location_precision: 'exact' };
+  }
+
+  // ~±400 m; enough to hide which house, small enough to stay useful on a map.
+  const RADIUS_DEG = 0.004;
+  return {
+    ...base,
+    address: coarseArea(job.address),
+    lat: job.lat + stableUnit(job.id + 'lat') * RADIUS_DEG,
+    lng: job.lng + stableUnit(job.id + 'lng') * RADIUS_DEG,
+    location_precision: 'approximate',
+  };
+}
+
 /** True only if userId is an exact member of the conversation's participant list. */
 async function isParticipant(conversationId: string, userId: string) {
   if (!conversationId) return false;
@@ -297,7 +359,15 @@ async function startServer() {
   // Jobs API
   app.get('/api/jobs', requireAuth, async (req, res) => {
     try {
+      const me = currentUser(req);
       const jobs = await prisma.job.findMany({
+        // This feed is work you could actually take: not your own postings
+        // (you cannot apply to those), and not jobs already assigned to
+        // someone else. Your own jobs live under Account > Your Jobs.
+        where: {
+          status: 'OPEN',
+          poster_id: { not: me.id },
+        },
         include: {
           poster: { select: PUBLIC_USER_SELECT },
           photos: true,
@@ -305,7 +375,7 @@ async function startServer() {
         },
         orderBy: { created_at: 'desc' }
       });
-      res.json(jobs);
+      res.json(jobs.map(job => jobForViewer(job, me.id)));
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
       res.status(500).json({ error: 'Failed to fetch jobs' });
@@ -359,6 +429,147 @@ async function startServer() {
     }
   });
 
+  // Declared before '/api/jobs/:id' on purpose - otherwise Express matches
+  // this path with id === 'mine'.
+  app.get('/api/jobs/mine', requireAuth, async (req, res) => {
+    try {
+      const me = currentUser(req);
+      const jobs = await prisma.job.findMany({
+        where: { poster_id: me.id, status: { not: 'CANCELLED' } },
+        include: {
+          photos: true,
+          applications: {
+            include: { helper: { select: PUBLIC_USER_SELECT } },
+            orderBy: { created_at: 'asc' },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      // Already the poster, so jobForViewer would return these unchanged.
+      res.json(jobs);
+    } catch (err) {
+      console.error('Failed to fetch own jobs:', err);
+      res.status(500).json({ error: 'Failed to fetch your jobs' });
+    }
+  });
+
+  /**
+   * Remove a job you posted.
+   *
+   * Deletes outright only when nobody else is involved yet. Once someone has
+   * applied, other people have put time into this - and there may be messages,
+   * payments or reviews hanging off it - so the job is cancelled instead of
+   * erased. Cancelled jobs drop out of every feed, so it looks like a delete
+   * to the poster while preserving the other side's history.
+   */
+  app.delete('/api/jobs/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const me = currentUser(req);
+
+      const job = await prisma.job.findUnique({
+        where: { id },
+        include: {
+          _count: { select: { applications: true, payments: true, reviews: true } },
+        },
+      });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'You can only delete jobs you posted' });
+      }
+
+      const hasHistory =
+        job._count.applications > 0 || job._count.payments > 0 || job._count.reviews > 0;
+
+      if (hasHistory) {
+        await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
+        return res.json({ deleted: false, cancelled: true });
+      }
+
+      // Photos have a required relation, so they must go first. Conversations
+      // reference the job optionally and are detached by the database.
+      await prisma.$transaction([
+        prisma.jobPhoto.deleteMany({ where: { job_id: id } }),
+        prisma.job.delete({ where: { id } }),
+      ]);
+      res.json({ deleted: true, cancelled: false });
+    } catch (err) {
+      console.error('Failed to delete job:', err);
+      res.status(500).json({ error: 'Failed to delete this job' });
+    }
+  });
+
+  app.get('/api/jobs/:id/applications', requireAuth, async (req, res) => {
+    try {
+      const me = currentUser(req);
+      const job = await prisma.job.findUnique({ where: { id: req.params.id } });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'Only the poster can see who applied' });
+      }
+
+      const applications = await prisma.application.findMany({
+        where: { job_id: req.params.id },
+        include: { helper: { select: PUBLIC_USER_SELECT } },
+        orderBy: { created_at: 'asc' },
+      });
+      res.json(applications);
+    } catch (err) {
+      console.error('Failed to fetch applications:', err);
+      res.status(500).json({ error: 'Failed to fetch applications' });
+    }
+  });
+
+  /**
+   * The poster hires one applicant. This is what flips a job from OPEN to
+   * ASSIGNED, and what unlocks the exact address for that helper - see
+   * jobForViewer.
+   */
+  app.post('/api/jobs/:id/applications/:applicationId/accept', requireAuth, async (req, res) => {
+    const { id: job_id, applicationId } = req.params;
+    try {
+      const me = currentUser(req);
+
+      const job = await prisma.job.findUnique({ where: { id: job_id } });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'Only the person who posted this job can accept an application' });
+      }
+
+      const application = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (!application || application.job_id !== job_id) {
+        return res.status(404).json({ error: 'Application not found for this job' });
+      }
+
+      // Idempotent: accepting the same person twice is not an error.
+      if (application.status === 'ACCEPTED') {
+        return res.json({ application });
+      }
+      if (job.status !== 'OPEN') {
+        return res.status(409).json({ error: 'This job already has someone assigned' });
+      }
+
+      // One transaction, so a job can never end up assigned with two accepted
+      // applications if two requests land at once.
+      const [accepted] = await prisma.$transaction([
+        prisma.application.update({
+          where: { id: applicationId },
+          data: { status: 'ACCEPTED' },
+        }),
+        prisma.application.updateMany({
+          where: { job_id, id: { not: applicationId } },
+          data: { status: 'REJECTED' },
+        }),
+        prisma.job.update({ where: { id: job_id }, data: { status: 'ASSIGNED' } }),
+      ]);
+
+      res.json({ application: accepted });
+    } catch (err) {
+      console.error('Failed to accept application:', err);
+      res.status(500).json({ error: 'Failed to accept application' });
+    }
+  });
+
   app.get('/api/jobs/:id', requireAuth, async (req, res) => {
     try {
       const job = await prisma.job.findUnique({
@@ -372,8 +583,9 @@ async function startServer() {
         }
       });
       if (!job) return res.status(404).json({ error: 'Job not found' });
-      res.json(job);
+      res.json(jobForViewer(job, currentUser(req).id));
     } catch (err) {
+      console.error('Failed to fetch job:', err);
       res.status(500).json({ error: 'Failed to fetch job' });
     }
   });

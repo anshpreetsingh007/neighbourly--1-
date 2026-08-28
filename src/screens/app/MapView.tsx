@@ -8,6 +8,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 
 const CATEGORY_ICONS: Record<string, string> = {
   snow: '❄️',
@@ -54,6 +55,7 @@ const MapCenterer = ({ center }: { center: [number, number] }) => {
 
 export const MapView: React.FC = () => {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,7 +93,7 @@ export const MapView: React.FC = () => {
   const handleStartChat = async (job: any) => {
     console.log('handleStartChat called from MapView for job:', job.id);
     if (!user) {
-        alert('Please sign in to message users');
+        showToast('Please sign in to message your neighbours.');
         return;
     }
 
@@ -102,12 +104,12 @@ export const MapView: React.FC = () => {
         console.log('Current user record (Map):', me);
 
         if (!me || !me.id) {
-            alert('Your profile is not fully set up. Please go to Account.');
+            showToast('Your profile is not set up yet. Finish it from Account.');
             return;
         }
 
         if (me.id === job.poster_id) {
-            alert('This is your own job!');
+            showToast("That's your own job - see who applied under Your Listings.");
             return;
         }
 
@@ -119,7 +121,7 @@ export const MapView: React.FC = () => {
         navigate(`/chat/${conversation.id}`);
     } catch (err) {
         console.error('Failed to start chat from Map:', err);
-        alert('Failed to start chat. Check console.');
+        showToast('Could not open that chat. Please try again.', 'error');
     }
   };
 
@@ -129,7 +131,7 @@ export const MapView: React.FC = () => {
         setMapCenter([pos.coords.latitude, pos.coords.longitude]);
       }, (err) => {
         console.warn('Geolocation failed:', err);
-        alert('Could not get your location. Please check browser permissions.');
+        showToast('Could not get your location. Check your browser permissions.', 'error');
       });
     }
   };
@@ -248,7 +250,7 @@ export const MapView: React.FC = () => {
                   <div className="flex items-center gap-4 text-[10px] text-white/40 font-black uppercase tracking-widest mt-1">
                     <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-amber-accent" />
-                        {selectedJob.address.split(',')[0]}
+                        {selectedJob.address?.split(',')[0] || 'Approximate area'}
                     </div>
                     <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5" />

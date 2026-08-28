@@ -1,10 +1,12 @@
 import React from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Home, Map, PlusCircle, MessageSquare, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
 
 export const Layout: React.FC = () => {
+  const location = useLocation();
   const navItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: Map, label: 'Map', path: '/map' },
@@ -68,7 +70,11 @@ export const Layout: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 relative z-10 pb-24 md:pb-0">
         <div className="max-w-6xl mx-auto">
-          <Outlet />
+          {/* Keyed on the path so the boundary resets when you navigate away,
+              rather than trapping the user on the error screen. */}
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
 

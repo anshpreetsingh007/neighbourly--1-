@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { Button, GlassCard } from '../../components/UI';
 import { User, MapPin, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 import axios from 'axios';
 
 export const ProfileSetup: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [firstName, setFirstName] = useState(
     user?.user_metadata?.first_name || (user?.user_metadata?.full_name || '').split(' ')[0] || ''
   );
@@ -44,7 +46,7 @@ export const ProfileSetup: React.FC = () => {
       setAvatarUrl(uploadData.secure_url);
     } catch (err) {
       console.error('Avatar upload failed:', err);
-      alert('Failed to upload avatar.');
+      showToast('Could not upload that photo. Please try again.', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -65,7 +67,7 @@ export const ProfileSetup: React.FC = () => {
       navigate('/');
     } catch (err) {
       console.error('Profile update failed:', err);
-      alert('Failed to save profile. Please try again.');
+      showToast('Could not save your profile. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }

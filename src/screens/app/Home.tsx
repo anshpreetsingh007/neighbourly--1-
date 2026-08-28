@@ -2,11 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
+import { ApplyModal } from '../../components/ApplyModal';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
+
+/** date-fns throws on an invalid date, and a throw during render blanks the app. */
+const relativeTime = (value: unknown) => {
+  try {
+    if (!value) return 'recently';
+    const date = new Date(value as string);
+    if (Number.isNaN(date.getTime())) return 'recently';
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return 'recently';
+  }
+};
 
 const CATEGORIES = [
   { id: 'snow', name: 'Snow Removal' },
@@ -26,6 +40,12 @@ export const Home: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [tab, setTab] = useState<'nearby' | 'mine'>('nearby');
+  const [myJobs, setMyJobs] = useState<any[] | null>(null);
+  const [isLoadingMine, setIsLoadingMine] = useState(false);
+  const [applyingTo, setApplyingTo] = useState<any | null>(null);
+  const [deletingJob, setDeletingJob] = useState<any | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tone: 'success' | 'warn' } | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const fetchJobs = async () => {
@@ -56,7 +76,7 @@ export const Home: React.FC = () => {
   const handleStartChat = async (job: any) => {
     console.log('handleStartChat called for job:', job.id);
     if (!user) {
-        alert('Please sign in to message users');
+        showNotice('Please sign in to message your neighbours.');
         return;
     }
 
@@ -68,12 +88,12 @@ export const Home: React.FC = () => {
         console.log('Current user record:', me);
 
         if (!me || !me.id) {
-            alert('Your profile is not fully set up. Please go to Account.');
+            showNotice('Your profile is not set up yet. Finish it from Account.');
             return;
         }
 
         if (me.id === job.poster_id) {
-            alert('This is your own job!');
+            showNotice("That's your own job - check Account > Your Jobs to see who applied.");
             return;
         }
 
@@ -85,31 +105,57 @@ export const Home: React.FC = () => {
         navigate(`/chat/${conversation.id}`);
     } catch (err) {
         console.error('Failed to start chat:', err);
-        alert('Failed to start chat. Check console.');
+        showNotice('Could not open that chat. Please try again.');
     }
   };
 
-  const handleApplyNow = async (job: any) => {
-    console.log('handleApplyNow called for job:', job.id);
-    if (!user) {
-        alert('Please sign in to apply for jobs');
-        return;
-    }
+  // Fetched only when the tab is first opened - most visits never need it.
+  useEffect(() => {
+    if (tab !== 'mine' || myJobs !== null || isLoadingMine) return;
+    setIsLoadingMine(true);
+    axios
+      .get('/api/jobs/mine')
+      .then(({ data }) => setMyJobs(data))
+      .catch(err => {
+        console.error('Failed to load your listings:', err);
+        setMyJobs([]);
+      })
+      .finally(() => setIsLoadingMine(false));
+  }, [tab, myJobs, isLoadingMine]);
 
+  const handleDeleteJob = async (job: any) => {
     try {
-        const { data: res } = await axios.post(`/api/jobs/${job.id}/apply`, {
-            helper_supabase_uid: user.id,
-            proposed_price: job.budget_min
-        });
-        console.log('Application response:', res);
-        
-        alert('Job application sent! Opening chat...');
-        navigate(`/chat/${res.conversation_id}`);
+      const { data } = await axios.delete(`/api/jobs/${job.id}`);
+      setMyJobs(prev => (prev || []).filter(j => j.id !== job.id));
+      setDeletingJob(null);
+      showNotice(
+        data.cancelled
+          ? 'Job cancelled. Anyone who applied can still see your conversation.'
+          : 'Job deleted.',
+        'success'
+      );
     } catch (err: any) {
-        console.error('Failed to apply:', err);
-        const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
-        alert(`Failed to apply: ${errorMsg}`);
+      console.error('Failed to delete job:', err);
+      setDeletingJob(null);
+      showNotice(err.response?.data?.error || 'Could not delete that job.');
     }
+  };
+
+  const showNotice = (text: string, tone: 'success' | 'warn' = 'warn') => {
+    setNotice({ text, tone });
+    window.setTimeout(() => setNotice(null), 5000);
+  };
+
+  // The API returns only *your* application on each job, so this is enough to
+  // know whether you have already applied and at what price.
+  const myApplication = (job: any) => (job.applications || [])[0];
+
+  const handleApplied = (jobId: string, application: any) => {
+    setJobs(prev =>
+      prev.map(job => (job.id === jobId ? { ...job, applications: [application] } : job))
+    );
+    setApplyingTo(null);
+    showNotice('Application sent. You can follow it up in Chat.', 'success');
   };
 
   const filteredJobs = jobs.filter(job => {
@@ -123,6 +169,24 @@ export const Home: React.FC = () => {
 
   return (
     <div className="p-6 md:p-10 space-y-10">
+      {notice && (
+        <div
+          className={clsx(
+            'p-4 rounded-2xl text-sm font-bold flex items-center gap-2 border',
+            notice.tone === 'success'
+              ? 'bg-emerald-status/15 border-emerald-status/40 text-emerald-status'
+              : 'bg-amber-accent/15 border-amber-accent/40 text-amber-accent'
+          )}
+        >
+          {notice.tone === 'success' ? (
+            <Check className="w-4 h-4 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+          )}
+          {notice.text}
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
@@ -190,11 +254,103 @@ export const Home: React.FC = () => {
 
       {/* Jobs Feed */}
       <section className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-2xl font-display font-bold tracking-tight">Nearby Jobs</h3>
+        <div className="flex items-center gap-6 px-2 border-b border-white/5">
+          {([
+            ['nearby', 'Nearby Jobs'],
+            ['mine', 'Your Listings'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={clsx(
+                'relative pb-3 text-2xl font-display font-bold tracking-tight transition-colors',
+                tab === key ? 'text-white' : 'text-white/25 hover:text-white/50'
+              )}
+            >
+              {label}
+              {tab === key && (
+                <motion.div
+                  layoutId="home-tab-indicator"
+                  className="absolute -bottom-px left-0 right-0 h-0.5 bg-amber-accent rounded-full"
+                />
+              )}
+            </button>
+          ))}
         </div>
 
-        {isLoading ? (
+        {tab === 'mine' ? (
+          isLoadingMine || myJobs === null ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
+              <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
+              <p className="text-[10px] font-black tracking-[0.2em] uppercase">Loading your listings...</p>
+            </div>
+          ) : myJobs.length === 0 ? (
+            <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-white/10 space-y-4">
+              <p className="text-white/20 font-black tracking-widest uppercase text-sm">You haven't posted anything</p>
+              <Button size="sm" onClick={() => navigate('/post-job')}>Post a job</Button>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6">
+              {myJobs.map((job: any) => {
+                const count = (job.applications || []).length;
+                const hired = (job.applications || []).find((a: any) => a.status === 'ACCEPTED');
+                return (
+                  <GlassCard key={job.id} hover className="p-5 space-y-4 border border-white/5 bg-white/[0.03]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="font-display font-bold text-lg truncate">{job.title}</h4>
+                        <p className="text-white/30 text-[11px] font-bold uppercase tracking-widest mt-1">
+                          {relativeTime(job.created_at)}
+                        </p>
+                      </div>
+                      <span
+                        className={clsx(
+                          'shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border',
+                          job.status === 'OPEN'
+                            ? 'bg-sky-status/15 text-sky-status border-sky-status/30'
+                            : 'bg-emerald-status/20 text-emerald-status border-emerald-status/30'
+                        )}
+                      >
+                        {job.status}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-white/30 line-clamp-2 leading-relaxed">{job.description}</p>
+
+                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+                      <span className="text-xs font-bold uppercase tracking-widest text-white/40 flex items-center gap-2">
+                        <Users className="w-3.5 h-3.5" />
+                        {hired
+                          ? `Hired ${hired.helper?.name || 'someone'}`
+                          : count === 0
+                          ? 'No applicants yet'
+                          : `${count} applicant${count === 1 ? '' : 's'}`}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant={count > 0 && !hired ? 'primary' : 'secondary'}
+                          className="text-xs rounded-xl"
+                          onClick={() => navigate('/my-jobs')}
+                        >
+                          {count > 0 && !hired ? 'Review' : 'Manage'}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingJob(job)}
+                          aria-label={`Delete ${job.title}`}
+                          className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-white/40 hover:text-rose-status hover:bg-rose-status/10 hover:border-rose-status/30 transition-all active:scale-90"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+          )
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
             <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
             <p className="text-[10px] font-black tracking-[0.2em] uppercase">Finding Gigs...</p>
@@ -234,7 +390,7 @@ export const Home: React.FC = () => {
                         <div className="flex items-center gap-4 text-[10px] text-white/40 font-bold uppercase tracking-wider">
                             <div className="flex items-center gap-1.5">
                                 <MapPin className="w-3.5 h-3.5 text-amber-accent" />
-                                {job.address.split(',')[0]}
+                                {job.address?.split(',')[0] || 'Nearby'}
                             </div>
                             <div className="flex items-center gap-1.5">
                                 <Clock className="w-3.5 h-3.5" />
@@ -250,7 +406,16 @@ export const Home: React.FC = () => {
                     <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-white/5" onClick={() => handleStartChat(job)}>
                          <MessageSquare className="w-4 h-4 mr-2" /> Message
                     </Button>
-                    <Button className="flex-1 text-xs py-3.5 rounded-xl" onClick={() => handleApplyNow(job)}>Apply Now</Button>
+                    {myApplication(job) ? (
+                      <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-[11px] font-black uppercase tracking-widest">
+                        <Check className="w-4 h-4" />
+                        Applied · ${myApplication(job).proposed_price}
+                      </div>
+                    ) : (
+                      <Button className="flex-1 text-xs py-3.5 rounded-xl" onClick={() => setApplyingTo(job)}>
+                        Apply Now
+                      </Button>
+                    )}
                 </div>
               </GlassCard>
             ))}
@@ -264,7 +429,7 @@ export const Home: React.FC = () => {
       </section>
 
       {/* Urgent Jobs Section Refined */}
-      {urgentJobs.length > 0 && (
+      {tab === 'nearby' && urgentJobs.length > 0 && (
         <section className="space-y-6">
           <h3 className="text-2xl font-display font-bold tracking-tight px-2">Urgent Gigs</h3>
           <div className="grid md:grid-cols-2 gap-6">
@@ -281,14 +446,44 @@ export const Home: React.FC = () => {
                     <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-white/5 border border-white/5" onClick={() => handleStartChat(job)}>
                         <MessageSquare className="w-5 h-5" />
                     </Button>
-                    <Button className="flex-[3] bg-rose-status hover:bg-rose-600 shadow-xl shadow-rose-500/20 rounded-xl font-black uppercase tracking-widest text-xs py-4" onClick={() => handleApplyNow(job)}>
-                        Instant Apply
-                    </Button>
+                    {myApplication(job) ? (
+                      <div className="flex-[3] flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest">
+                        <Check className="w-4 h-4" />
+                        Applied · ${myApplication(job).proposed_price}
+                      </div>
+                    ) : (
+                      <Button className="flex-[3] bg-rose-status hover:bg-rose-600 shadow-xl shadow-rose-500/20 rounded-xl font-black uppercase tracking-widest text-xs py-4" onClick={() => setApplyingTo(job)}>
+                          Instant Apply
+                      </Button>
+                    )}
                   </div>
                 </GlassCard>
             ))}
           </div>
         </section>
+      )}
+
+      {deletingJob && (
+        <ConfirmDialog
+          destructive
+          title={`Delete "${deletingJob.title}"?`}
+          body={
+            (deletingJob.applications || []).length > 0
+              ? `${(deletingJob.applications || []).length} neighbour(s) already applied. The job will be cancelled and removed from your listings, but their conversation with you stays.`
+              : 'This removes the job for good. It cannot be undone.'
+          }
+          confirmLabel="Delete job"
+          onCancel={() => setDeletingJob(null)}
+          onConfirm={() => handleDeleteJob(deletingJob)}
+        />
+      )}
+
+      {applyingTo && (
+        <ApplyModal
+          job={applyingTo}
+          onClose={() => setApplyingTo(null)}
+          onApplied={(application) => handleApplied(applyingTo.id, application)}
+        />
       )}
     </div>
   );
