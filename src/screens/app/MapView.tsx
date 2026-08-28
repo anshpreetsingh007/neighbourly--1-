@@ -2,13 +2,35 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GlassCard, Button } from '../../components/UI';
+import { Button } from '../../components/UI';
 import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
+
+/**
+ * CARTO's raster basemaps now watermark every unauthenticated tile with
+ * "API KEY REQUIRED", so their dark style is used only when a key is present.
+ * Without one we fall back to OpenStreetMap, which needs no key - a light map
+ * is a lot better than a map covered in watermarks.
+ *
+ * Free key (5M tiles/month): https://carto.com/basemaps/apikey
+ */
+const CARTO_KEY = import.meta.env.VITE_CARTO_API_KEY;
+
+const BASEMAP = CARTO_KEY
+  ? {
+      url: `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }
+  : {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    };
 
 const CATEGORY_ICONS: Record<string, string> = {
   snow: '❄️',
@@ -147,8 +169,8 @@ export const MapView: React.FC = () => {
           zoomControl={false}
         >
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png"
+            attribution={BASEMAP.attribution}
+            url={BASEMAP.url}
           />
           <MapCenterer center={mapCenter} />
           
@@ -231,7 +253,7 @@ export const MapView: React.FC = () => {
             transition={{ type: 'spring', damping: 20, stiffness: 150 }}
             className="absolute bottom-28 left-6 right-6 z-20 md:max-w-xl md:left-1/2 md:-translate-x-1/2"
           >
-            <GlassCard className="p-8 relative shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-white/10 bg-[#080a12]/90">
+            <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-white/10 bg-[#0b0e1a]/95">
               <button 
                 onClick={() => setSelectedJob(null)}
                 className="absolute top-6 right-6 p-2.5 hover:bg-white/10 rounded-2xl transition-all active:scale-90 border border-white/5 bg-white/5"
@@ -240,7 +262,7 @@ export const MapView: React.FC = () => {
               </button>
 
               <div className="flex gap-6">
-                <div className="w-24 h-24 glass rounded-[2rem] flex items-center justify-center text-5xl shadow-inner border border-white/10 bg-white/[0.05]">
+                <div className="w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl shadow-inner border border-white/10 bg-white/[0.06]">
                   {CATEGORY_ICONS[selectedJob.category] || '🛠️'}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -280,7 +302,7 @@ export const MapView: React.FC = () => {
                     Quick Chat
                 </button>
               </div>
-            </GlassCard>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
