@@ -9,17 +9,7 @@ import axios from 'axios';
 import { clsx } from 'clsx';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-
-const CATEGORIES = [
-  { id: 'snow', name: 'Snow Removal', icon: '❄️' },
-  { id: 'plumbing', name: 'Plumbing', icon: '🚰' },
-  { id: 'electrical', name: 'Electrical', icon: '⚡' },
-  { id: 'cleaning', name: 'Cleaning', icon: '🧹' },
-  { id: 'moving', name: 'Moving', icon: '📦' },
-  { id: 'painting', name: 'Painting', icon: '🎨' },
-  { id: 'landscaping', name: 'Landscaping', icon: '🌿' },
-  { id: 'oddjobs', name: 'Odd Jobs', icon: '🛠️' },
-];
+import { CATEGORIES } from '../../lib/categories';
 
 const MapPreview = ({ center }: { center: [number, number] }) => {
   const map = useMap();
@@ -110,13 +100,13 @@ export const PostJob: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign');
+      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_jobs' });
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
       formDataUpload.append('api_key', signData.api_key);
       formDataUpload.append('timestamp', signData.timestamp);
       formDataUpload.append('signature', signData.signature);
-      formDataUpload.append('folder', 'neighbourly_jobs');
+      formDataUpload.append('folder', signData.folder);
 
       const { data: uploadData } = await axios.post(
         `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
@@ -165,7 +155,7 @@ export const PostJob: React.FC = () => {
 
       setIsSubmitting(true);
       try {
-        const res = await axios.post('/api/jobs', {
+        await axios.post('/api/jobs', {
           title: formData.title,
           category: formData.category,
           description: formData.description,
@@ -177,8 +167,7 @@ export const PostJob: React.FC = () => {
           budget_max: formData.budget[1],
           photos: formData.photos
         });
-        
-        console.log('Job posted successfully:', res.data);
+
         setStep(4);
       } catch (err) {
         console.error('Failed to post job:', err);
@@ -436,7 +425,7 @@ export const PostJob: React.FC = () => {
             </div>
             <h2 className="text-3xl font-display font-bold">Job Posted!</h2>
             <p className="text-white/50">Your job is now visible to helpers in your area. We'll notify you when you get applicants.</p>
-            <Button className="w-full" onClick={() => navigate('/')}>View Your Job</Button>
+            <Button className="w-full" onClick={() => navigate('/my-jobs')}>View Your Job</Button>
           </motion.div>
         );
       default:
@@ -447,7 +436,7 @@ export const PostJob: React.FC = () => {
   return (
     <div className="p-6 min-h-screen flex flex-col">
       <header className="flex items-center justify-between mb-8">
-        <button onClick={() => navigate(-1)} className="p-2 glass rounded-xl">
+        <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-display font-bold">Post a Job</h1>

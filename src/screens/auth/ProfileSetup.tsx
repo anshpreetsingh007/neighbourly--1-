@@ -30,13 +30,13 @@ export const ProfileSetup: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign');
+      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_avatars' });
       const formData = new FormData();
       formData.append('file', file);
       formData.append('api_key', signData.api_key);
       formData.append('timestamp', signData.timestamp);
       formData.append('signature', signData.signature);
-      formData.append('folder', 'neighbourly_avatars');
+      formData.append('folder', signData.folder);
 
       const { data: uploadData } = await axios.post(
         `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,

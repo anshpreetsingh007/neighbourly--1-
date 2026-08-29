@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { GlassCard } from '../../components/UI';
 import { Search, ChevronRight, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/UI';
+import { Avatar } from '../../components/Avatar';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
@@ -77,29 +78,27 @@ export const ChatList: React.FC = () => {
                 : '';
 
               return (
-                <Link 
+                <Link
                   to={`/chat/${chat.id}`}
-                  key={chat.id} 
+                  key={chat.id}
                   className="block group no-underline"
-                  onClick={() => console.log('Navigating to chat:', chat.id)}
                 >
                   <GlassCard 
                     hover 
                     className="p-4 flex items-center gap-4 cursor-pointer border border-white/5 active:scale-98 transition-all group-hover:bg-white/5"
                   >
                     <div className="relative">
-                      <img 
-                        src={chat.otherUser?.avatar_url || `https://picsum.photos/seed/${chat.id}/100/100`} 
-                        alt={chat.otherUser?.name} 
-                        className="w-14 h-14 rounded-2xl object-cover ring-2 ring-white/5"
-                        referrerPolicy="no-referrer"
+                      <Avatar
+                        name={chat.otherUser?.name}
+                        avatarUrl={chat.otherUser?.avatar_url}
+                        seed={chat.otherUser?.id || chat.id}
+                        size="lg"
                       />
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-status border-2 border-[#080a12] rounded-full shadow-lg" />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center mb-1">
-                        <h4 className="font-bold truncate text-lg group-hover:text-amber-accent transition-colors">{chat.otherUser?.name || 'Anonymous User'}</h4>
+                        <h4 className="font-bold truncate text-lg group-hover:text-amber-accent transition-colors">{chat.otherUser?.name || 'Neighbour'}</h4>
                         <span className="text-[10px] text-white/30 font-bold uppercase tracking-tighter">
                           {timeStr}
                         </span>

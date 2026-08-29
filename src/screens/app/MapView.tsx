@@ -3,13 +3,15 @@ import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../../components/UI';
-import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
+import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { clsx } from 'clsx';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
+import { ApplyModal } from '../../components/ApplyModal';
+import { CATEGORY_ICONS, categoryIcon } from '../../lib/categories';
 
 /**
  * CARTO's raster basemaps now watermark every unauthenticated tile with
@@ -33,16 +35,6 @@ const BASEMAP = CARTO_KEY
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  snow: '❄️',
-  plumbing: '🚰',
-  electrical: '⚡',
-  cleaning: '🧹',
-  moving: '📦',
-  painting: '🎨',
-  landscaping: '🌿',
-  oddjobs: '🛠️',
-};
 
 // Custom Marker Component
 const JobMarker = ({ job, isSelected, onClick }: { job: any, isSelected: boolean, onClick: () => void, key?: any }) => {
@@ -88,6 +80,7 @@ export const MapView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [applyingTo, setApplyingTo] = useState<any | null>(null);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -118,7 +111,6 @@ export const MapView: React.FC = () => {
   }, []);
 
   const handleStartChat = async (job: any) => {
-    console.log('handleStartChat called from MapView for job:', job.id);
     if (!user) {
         showToast('Please sign in to message your neighbours.');
         return;
@@ -126,7 +118,6 @@ export const MapView: React.FC = () => {
 
     try {
         const { data: me } = await axios.get('/api/users/me');
-        console.log('Current user record (Map):', me);
 
         if (!me || !me.id) {
             showToast('Your profile is not set up yet. Finish it from Account.');
@@ -142,7 +133,6 @@ export const MapView: React.FC = () => {
             job_id: job.id,
             participant_ids: [me.id, job.poster_id]
         });
-        console.log('Conversation ready (Map):', conversation.id);
         navigate(`/chat/${conversation.id}`);
     } catch (err) {
         console.error('Failed to start chat from Map:', err);
@@ -206,6 +196,7 @@ export const MapView: React.FC = () => {
         <div className="pointer-events-auto">
             <Button
               variant="secondary"
+              aria-label="Filter by category"
               className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80 relative"
               onClick={() => setShowFilters(true)}
             >
@@ -237,7 +228,7 @@ export const MapView: React.FC = () => {
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-display font-bold">Filter by Category</h3>
-                <button onClick={() => setShowFilters(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                <button onClick={() => setShowFilters(false)} aria-label="Close filters" className="p-2 hover:bg-white/10 rounded-xl transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -269,8 +260,9 @@ export const MapView: React.FC = () => {
 
       {/* Locate Button */}
       <div className="absolute right-6 bottom-32 flex flex-col gap-3 z-10">
-        <button 
+        <button
             onClick={locateUser}
+            aria-label="Centre map on my location"
             className="p-5 glass rounded-2xl shadow-2xl border border-white/5 bg-white/5 active:scale-90 transition-all hover:bg-white/10"
         >
           <Navigation className="w-6 h-6 text-amber-accent" />
@@ -309,8 +301,9 @@ export const MapView: React.FC = () => {
             className="absolute bottom-28 left-6 right-6 z-20 md:max-w-xl md:left-1/2 md:-translate-x-1/2"
           >
             <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-white/10 bg-[#0b0e1a]/95">
-              <button 
+              <button
                 onClick={() => setSelectedJob(null)}
+                aria-label="Close job details"
                 className="absolute top-6 right-6 p-2.5 hover:bg-white/10 rounded-2xl transition-all active:scale-90 border border-white/5 bg-white/5"
               >
                 <X className="w-5 h-5 text-white/50" />
@@ -318,7 +311,7 @@ export const MapView: React.FC = () => {
 
               <div className="flex gap-6">
                 <div className="w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl shadow-inner border border-white/10 bg-white/[0.06]">
-                  {CATEGORY_ICONS[selectedJob.category] || '🛠️'}
+                  {categoryIcon(selectedJob.category)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-2">
@@ -334,6 +327,12 @@ export const MapView: React.FC = () => {
                         {selectedJob.created_at ? formatDistanceToNow(new Date(selectedJob.created_at), { addSuffix: true }) : 'Recently'}
                     </div>
                   </div>
+                  {selectedJob.location_precision === 'approximate' && (
+                    <div className="flex items-center gap-1.5 mt-2 text-[10px] text-sky-status font-bold uppercase tracking-widest">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Exact address shown once you're hired
+                    </div>
+                  )}
                   <div className="mt-4 flex items-center gap-2">
                      <span className="text-3xl font-display font-bold text-amber-accent">${selectedJob.budget_min}</span>
                      <span className="text-white/20 font-bold">—</span>
@@ -342,25 +341,44 @@ export const MapView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex gap-4 mt-8">
-                <button 
-                    className="flex-1 py-4 glass rounded-2xl border border-white/5 text-xs font-black uppercase tracking-widest text-white hover:bg-white/10 transition-all active:scale-95" 
-                    onClick={() => setSelectedJob(null)}
-                >
-                    Close
-                </button>
-                <button 
-                    className="flex-[2] py-4 bg-amber-accent text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-amber-500/20 hover:scale-[1.02] transition-all active:scale-95 flex items-center justify-center gap-2" 
+              <div className="flex gap-3 mt-8">
+                <button
+                    className="p-4 glass rounded-2xl border border-white/5 text-white hover:bg-white/10 transition-all active:scale-95"
                     onClick={() => handleStartChat(selectedJob)}
+                    aria-label="Message"
                 >
-                    <MessageSquare className="w-4 h-4" />
-                    Quick Chat
+                    <MessageSquare className="w-5 h-5" />
                 </button>
+                {(selectedJob.applications || []).length > 0 ? (
+                  <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest glass rounded-2xl border border-emerald-status/20">
+                    Applied · ${selectedJob.applications[0].proposed_price}
+                  </div>
+                ) : (
+                  <button
+                      className="flex-1 py-4 bg-amber-accent text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-amber-500/20 hover:scale-[1.02] transition-all active:scale-95"
+                      onClick={() => setApplyingTo(selectedJob)}
+                  >
+                      Apply Now
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {applyingTo && (
+        <ApplyModal
+          job={applyingTo}
+          onClose={() => setApplyingTo(null)}
+          onApplied={(application) => {
+            setJobs(prev => prev.map(j => (j.id === applyingTo.id ? { ...j, applications: [application] } : j)));
+            setSelectedJob((prev: any) => (prev?.id === applyingTo.id ? { ...prev, applications: [application] } : prev));
+            setApplyingTo(null);
+            showToast('Application sent. You can follow it up in Chat.', 'success');
+          }}
+        />
+      )}
     </div>
   );
 };

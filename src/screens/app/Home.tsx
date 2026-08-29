@@ -4,11 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { ApplyModal } from '../../components/ApplyModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { Avatar } from '../../components/Avatar';
+import { JobThumbnail } from '../../components/JobThumbnail';
 import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
+import { CATEGORIES } from '../../lib/categories';
 
 /** date-fns throws on an invalid date, and a throw during render blanks the app. */
 const relativeTime = (value: unknown) => {
@@ -24,20 +27,18 @@ const relativeTime = (value: unknown) => {
 
 const URGENCY_OPTIONS = ['FLEXIBLE', 'THIS WEEK', 'ASAP'];
 
-const CATEGORIES = [
-  { id: 'snow', name: 'Snow Removal' },
-  { id: 'plumbing', name: 'Plumbing' },
-  { id: 'electrical', name: 'Electrical' },
-  { id: 'cleaning', name: 'Cleaning' },
-  { id: 'moving', name: 'Moving' },
-  { id: 'painting', name: 'Painting' },
-  { id: 'landscaping', name: 'Landscaping' },
-  { id: 'oddjobs', name: 'Odd Jobs' },
-];
+function timeOfDayGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 5) return 'Good Night';
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
+  return 'Good Evening';
+}
 
 export const Home: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [greeting] = useState(timeOfDayGreeting);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
@@ -79,7 +80,6 @@ export const Home: React.FC = () => {
   }, [user]);
 
   const handleStartChat = async (job: any) => {
-    console.log('handleStartChat called for job:', job.id);
     if (!user) {
         showNotice('Please sign in to message your neighbours.');
         return;
@@ -88,7 +88,6 @@ export const Home: React.FC = () => {
     try {
         // Find our user record first to get the internal ID
         const { data: me } = await axios.get('/api/users/me');
-        console.log('Current user record:', me);
 
         if (!me || !me.id) {
             showNotice('Your profile is not set up yet. Finish it from Account.');
@@ -104,7 +103,6 @@ export const Home: React.FC = () => {
             job_id: job.id,
             participant_ids: [me.id, job.poster_id]
         });
-        console.log('Conversation ready:', conversation.id);
         navigate(`/chat/${conversation.id}`);
     } catch (err) {
         console.error('Failed to start chat:', err);
@@ -204,19 +202,23 @@ export const Home: React.FC = () => {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Good Morning</h2>
+          <h2 className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{greeting}</h2>
           <h1 className="text-3xl md:text-4xl font-display font-bold text-white tracking-tight">
             {user?.user_metadata?.full_name?.split(' ')[0] || 'Neighbour'}
           </h1>
         </div>
-        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl transition-transform hover:scale-110 cursor-pointer">
-          <img
-            src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/100/100"}
-            alt="Avatar"
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+        <button
+          onClick={() => navigate('/account')}
+          className="rounded-2xl border-2 border-white/10 shadow-2xl transition-transform hover:scale-110 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50"
+          aria-label="Go to account"
+        >
+          <Avatar
+            name={user?.user_metadata?.full_name}
+            avatarUrl={user?.user_metadata?.avatar_url}
+            seed={user?.id}
+            size="lg"
           />
-        </div>
+        </button>
       </header>
 
       {/* Search & Filter */}
@@ -233,6 +235,7 @@ export const Home: React.FC = () => {
         </div>
         <Button
           variant="secondary"
+          aria-label="Filters"
           className="p-5 rounded-2xl border border-white/5 relative"
           onClick={() => setShowFilters(true)}
         >
@@ -265,7 +268,7 @@ export const Home: React.FC = () => {
             >
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-display font-bold">Filters</h3>
-                <button onClick={() => setShowFilters(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                <button onClick={() => setShowFilters(false)} aria-label="Close filters" className="p-2 hover:bg-white/10 rounded-xl transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -456,11 +459,11 @@ export const Home: React.FC = () => {
               <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-white/5 bg-white/[0.03]">
                 <div className="flex gap-4">
                     <div className="relative shrink-0">
-                        <img
-                            src={job.photos?.[0]?.url || `https://picsum.photos/seed/${job.id}/200/200`}
+                        <JobThumbnail
+                            photoUrl={job.photos?.[0]?.url}
+                            category={job.category}
                             alt={job.title}
-                            className="w-24 h-24 rounded-2xl object-cover ring-2 ring-white/5 shadow-2xl"
-                            referrerPolicy="no-referrer"
+                            className="w-24 h-24 rounded-2xl ring-2 ring-white/5 shadow-2xl"
                         />
                         {job.urgency === 'ASAP' && (
                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-rose-status border-4 border-[#080a12] rounded-full shadow-lg" />

@@ -46,13 +46,13 @@ export const Settings: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign');
+      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_avatars' });
       const formData = new FormData();
       formData.append('file', file);
       formData.append('api_key', signData.api_key);
       formData.append('timestamp', signData.timestamp);
       formData.append('signature', signData.signature);
-      formData.append('folder', 'neighbourly_avatars');
+      formData.append('folder', signData.folder);
 
       const { data: uploadData } = await axios.post(
         `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
@@ -110,7 +110,7 @@ export const Settings: React.FC = () => {
   return (
     <div className="p-6 min-h-screen">
       <header className="flex items-center gap-4 mb-8">
-        <button onClick={() => navigate('/account')} className="p-2 glass rounded-xl">
+        <button onClick={() => navigate('/account')} aria-label="Back to account" className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-3xl font-display font-bold">Settings</h1>

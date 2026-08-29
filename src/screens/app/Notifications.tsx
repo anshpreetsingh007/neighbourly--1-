@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
-import { ChevronLeft, Bell, MessageSquare, Briefcase, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Bell, MessageSquare, Briefcase, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../hooks/useSocket';
@@ -10,6 +10,7 @@ import axios from 'axios';
 const ICONS: Record<string, React.ElementType> = {
   MESSAGE: MessageSquare,
   APPLICATION: Briefcase,
+  HIRED: CheckCircle2,
 };
 
 export const Notifications: React.FC = () => {
@@ -69,7 +70,7 @@ export const Notifications: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <header className="flex items-center gap-4">
-        <button onClick={() => navigate('/account')} className="p-2 glass rounded-xl">
+        <button onClick={() => navigate('/account')} aria-label="Back to account" className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-3xl font-display font-bold">Notifications</h1>

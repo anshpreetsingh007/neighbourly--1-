@@ -34,8 +34,8 @@ export const Welcome: React.FC = () => {
               <Shield className="text-emerald-status w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold">Secure Escrow</h3>
-              <p className="text-sm text-white/50">Payments are held safely until the job is done.</p>
+              <h3 className="font-bold">Privacy Protected</h3>
+              <p className="text-sm text-white/50">Your exact address stays hidden until you hire someone.</p>
             </div>
           </GlassCard>
 

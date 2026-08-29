@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { GlassCard, Button } from '../../components/UI';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { Avatar } from '../../components/Avatar';
+import { useToast } from '../../components/Toast';
 
 /**
  * date-fns throws on an invalid date, and an uncaught throw during render
@@ -45,6 +47,8 @@ export const MyJobs: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingHire, setPendingHire] = useState<{ jobId: string; application: any } | null>(null);
+  const [messagingId, setMessagingId] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const loadJobs = useCallback(async () => {
     try {
@@ -62,6 +66,23 @@ export const MyJobs: React.FC = () => {
   useEffect(() => {
     loadJobs();
   }, [loadJobs]);
+
+  const handleMessage = async (job: any, application: any) => {
+    setMessagingId(application.id);
+    try {
+      const { data: me } = await axios.get('/api/users/me');
+      const { data: conversation } = await axios.post('/api/conversations', {
+        job_id: job.id,
+        participant_ids: [me.id, application.helper_id],
+      });
+      navigate(`/chat/${conversation.id}`);
+    } catch (err) {
+      console.error('Failed to open conversation:', err);
+      showToast('Could not open that conversation. Please try again.', 'error');
+    } finally {
+      setMessagingId(null);
+    }
+  };
 
   const handleAccept = async (jobId: string, application: any) => {
     setAcceptingId(application.id);
@@ -92,6 +113,7 @@ export const MyJobs: React.FC = () => {
       <header className="flex items-center gap-3">
         <button
           onClick={() => navigate('/account')}
+          aria-label="Back to account"
           className="p-2.5 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all active:scale-90"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -167,14 +189,10 @@ export const MyJobs: React.FC = () => {
                         )}
                       >
                         <div className="flex items-center gap-3">
-                          <img
-                            src={
-                              application.helper?.avatar_url ||
-                              `https://picsum.photos/seed/${application.helper_id}/100/100`
-                            }
-                            alt=""
-                            className="w-11 h-11 rounded-2xl object-cover ring-2 ring-white/10"
-                            referrerPolicy="no-referrer"
+                          <Avatar
+                            name={application.helper?.name}
+                            avatarUrl={application.helper?.avatar_url}
+                            seed={application.helper_id}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="font-bold truncate">
@@ -209,7 +227,8 @@ export const MyJobs: React.FC = () => {
                           <Button
                             variant="secondary"
                             className="flex-1 text-xs py-3 rounded-xl border border-white/5"
-                            onClick={() => navigate('/chat')}
+                            isLoading={messagingId === application.id}
+                            onClick={() => handleMessage(job, application)}
                           >
                             <MessageSquare className="w-4 h-4 mr-2" /> Message
                           </Button>

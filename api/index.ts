@@ -316,8 +316,9 @@ async function startServer() {
     socket.on('send_message', async (data) => {
       // sender_id is deliberately NOT read from the payload - the sender is
       // whoever authenticated at handshake.
-      const { conversation_id, body } = data || {};
-      if (!conversation_id || !body) return;
+      const { conversation_id, body, photo_url } = data || {};
+      const trimmedBody = typeof body === 'string' ? body.trim() : '';
+      if (!conversation_id || (!trimmedBody && !photo_url)) return;
 
       try {
         if (!(await isParticipant(conversation_id, me.id))) {
@@ -329,8 +330,9 @@ async function startServer() {
           data: {
             conversation_id,
             sender_id: me.id,
-            body,
-            type: 'TEXT'
+            body: trimmedBody,
+            photo_url: photo_url || null,
+            type: photo_url ? 'IMAGE' : 'TEXT'
           },
           include: { sender: { select: PUBLIC_USER_SELECT } }
         });
@@ -346,7 +348,9 @@ async function startServer() {
                 user_id: recipientId,
                 type: 'MESSAGE',
                 title: `New message from ${me.name || 'a neighbour'}`,
-                body: body.length > 120 ? `${body.slice(0, 120)}...` : body,
+                body: trimmedBody
+                  ? (trimmedBody.length > 120 ? `${trimmedBody.slice(0, 120)}...` : trimmedBody)
+                  : 'Sent a photo',
                 data: JSON.stringify({ conversation_id })
               }
             });
@@ -355,6 +359,23 @@ async function startServer() {
         }
       } catch (err) {
         console.error('Failed to save message:', err);
+      }
+    });
+
+    // Marks every message the caller received (not sent) in this conversation
+    // as read, and tells the room so the sender's checkmarks can update live.
+    socket.on('mark_read', async (conversationId: string) => {
+      if (!(await isParticipant(conversationId, me.id))) return;
+      try {
+        const { count } = await prisma.message.updateMany({
+          where: { conversation_id: conversationId, sender_id: { not: me.id }, read_at: null },
+          data: { read_at: new Date() },
+        });
+        if (count > 0) {
+          chatNamespace.to(conversationId).emit('messages_read', { conversation_id: conversationId, reader_id: me.id });
+        }
+      } catch (err) {
+        console.error('Failed to mark messages read:', err);
       }
     });
 
@@ -906,22 +927,62 @@ async function startServer() {
     }
   });
 
+  // Reports API
+  const REPORT_TARGET_TYPES = new Set(['USER', 'JOB', 'MESSAGE']);
+
+  app.post('/api/reports', requireAuth, async (req, res) => {
+    const { target_type, target_id, reason } = req.body;
+
+    if (!REPORT_TARGET_TYPES.has(target_type) || typeof target_id !== 'string' || !target_id) {
+      return res.status(400).json({ error: 'Invalid report target' });
+    }
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ error: 'A reason is required' });
+    }
+
+    try {
+      const me = currentUser(req);
+      const report = await prisma.report.create({
+        data: {
+          reporter_id: me.id,
+          target_type,
+          target_id,
+          reason: reason.trim(),
+        },
+      });
+      res.status(201).json(report);
+    } catch (err) {
+      console.error('Failed to create report:', err);
+      res.status(500).json({ error: 'Failed to submit report' });
+    }
+  });
+
   // Cloudinary Signing API
+  const UPLOAD_FOLDERS = new Set(['neighbourly_jobs', 'neighbourly_avatars', 'neighbourly_chat']);
+
   app.post('/api/uploads/sign', requireAuth, (req, res) => {
     if (!process.env.CLOUDINARY_API_SECRET || !process.env.CLOUDINARY_CLOUD_NAME) {
       console.error('Cannot sign upload: Cloudinary credentials are missing.');
       return res.status(503).json({ error: 'Uploads are not configured on the server' });
     }
 
+    // The signature covers whichever folder is actually used - Cloudinary
+    // recomputes it over the params it receives, so a mismatch here (e.g.
+    // always signing "neighbourly_jobs" while the client uploads to
+    // "neighbourly_avatars") makes every non-matching upload fail silently
+    // with an invalid-signature error.
+    const folder = UPLOAD_FOLDERS.has(req.body?.folder) ? req.body.folder : 'neighbourly_jobs';
+
     const timestamp = Math.round(new Date().getTime() / 1000);
     const signature = cloudinary.utils.api_sign_request(
-      { timestamp, folder: 'neighbourly_jobs' },
+      { timestamp, folder },
       process.env.CLOUDINARY_API_SECRET
     );
 
     res.json({
       signature,
       timestamp,
+      folder,
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
     });

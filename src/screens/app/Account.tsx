@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { GlassCard, Button } from '../../components/UI';
+import { Avatar } from '../../components/Avatar';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import {
@@ -14,8 +15,7 @@ import {
   LogOut,
   ChevronRight,
   Star,
-  Briefcase,
-  Smartphone
+  Briefcase
 } from 'lucide-react';
 
 export const Account: React.FC = () => {
@@ -37,13 +37,15 @@ export const Account: React.FC = () => {
     fetchProfile();
   }, [user]);
 
-  // Settings and Notifications are real pages; the rest are not built yet.
+  // Settings and Notifications are real pages. Payments and ID Verification
+  // are real roadmap items (the schema already has stripe_customer_id and
+  // is_id_verified) but need a Stripe/KYC vendor wired up before they can do
+  // anything - so they say so honestly instead of pretending to work.
   const menuItems = [
     { icon: Settings, label: 'Settings', color: 'text-white/50', path: '/account/settings' },
     { icon: Bell, label: 'Notifications', color: 'text-sky-status', path: '/account/notifications' },
     { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent', path: null },
     { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status', path: null },
-    { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50', path: null },
   ];
 
   const handleMenuClick = (item: (typeof menuItems)[number]) => {
@@ -59,12 +61,12 @@ export const Account: React.FC = () => {
       {/* Profile Header */}
       <section className="flex flex-col items-center text-center space-y-4">
         <div className="relative">
-          <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-white/10 shadow-2xl">
-            <img
-              src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/200/200"}
-              alt="Profile"
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
+          <div className="border-4 border-white/10 shadow-2xl rounded-[40px]">
+            <Avatar
+              name={profile?.name || user?.user_metadata?.full_name}
+              avatarUrl={profile?.avatar_url || user?.user_metadata?.avatar_url}
+              seed={user?.id}
+              size="profile"
             />
           </div>
           {profile?.is_id_verified && (
@@ -153,7 +155,7 @@ export const Account: React.FC = () => {
       </Button>
 
       <div className="text-center space-y-1">
-        <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Neighbourly v1.0.4</p>
+        <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Neighbourly</p>
         <p className="text-[10px] font-bold text-white/10 uppercase tracking-widest">Made with ❤️ for the community</p>
       </div>
     </div>
