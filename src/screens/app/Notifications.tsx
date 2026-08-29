@@ -25,9 +25,7 @@ export const Notifications: React.FC = () => {
     setIsLoading(true);
     setLoadError(false);
     try {
-      const { data } = await axios.get('/api/notifications', {
-        headers: { 'x-supabase-uid': user.id }
-      });
+      const { data } = await axios.get('/api/notifications');
       setNotifications(data);
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
@@ -42,18 +40,9 @@ export const Notifications: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    if (!socket || !user) return;
-    const joinRoom = async () => {
-      try {
-        const { data: me } = await axios.get('/api/users/me', {
-          headers: { 'x-supabase-uid': user.id }
-        });
-        if (me?.id) socket.emit('join_user_room', me.id);
-      } catch (err) {
-        console.error('Failed to join notification room:', err);
-      }
-    };
-    joinRoom();
+    // The server joins this socket to its own notification room automatically
+    // once the connection is authenticated, so there's nothing to emit here.
+    if (!socket) return;
 
     socket.on('notification', (notification: any) => {
       setNotifications(prev => [notification, ...prev]);
@@ -62,7 +51,7 @@ export const Notifications: React.FC = () => {
     return () => {
       socket.off('notification');
     };
-  }, [socket, user]);
+  }, [socket]);
 
   const handleClick = async (notification: any) => {
     if (!notification.read_at) {

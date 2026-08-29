@@ -20,9 +20,7 @@ export const ChatList: React.FC = () => {
     setIsLoading(true);
     setLoadError(false);
     try {
-      const { data } = await axios.get('/api/conversations', {
-        headers: { 'x-supabase-uid': user.id }
-      });
+      const { data } = await axios.get('/api/conversations');
       setConversations(data);
     } catch (err) {
       console.error('Failed to fetch conversations:', err);

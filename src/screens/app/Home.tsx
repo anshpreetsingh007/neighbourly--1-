@@ -67,9 +67,7 @@ export const Home: React.FC = () => {
 
     try {
         // Find our user record first to get the internal ID
-        const { data: me } = await axios.get('/api/users/me', {
-            headers: { 'x-supabase-uid': user.id }
-        });
+        const { data: me } = await axios.get('/api/users/me');
         console.log('Current user record:', me);
 
         if (!me || !me.id) {
@@ -103,7 +101,6 @@ export const Home: React.FC = () => {
 
     try {
         const { data: res } = await axios.post(`/api/jobs/${job.id}/apply`, {
-            helper_supabase_uid: user.id,
             proposed_price: job.budget_min
         });
         console.log('Application response:', res);

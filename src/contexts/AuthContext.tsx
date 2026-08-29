@@ -3,14 +3,27 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import axios from 'axios';
 
-// Add a request interceptor to include the Supabase UID in headers for internal API calls only
+// Attach the caller's access token to same-origin API calls only.
+//
+// The origin comparison must be exact. A substring test such as
+// url.includes(window.location.host) also matches a third-party URL that merely
+// mentions our hostname in a query string - e.g. the Nominatim address lookup in
+// PostJob - which would hand a live credential to that host.
+const isSameOrigin = (url?: string) => {
+  if (!url) return false;
+  try {
+    return new URL(url, window.location.origin).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+};
+
 axios.interceptors.request.use(async (config) => {
-  const isInternal = config.url && (config.url.startsWith('/') || config.url.includes(window.location.host));
-  
-  if (isInternal) {
+  if (isSameOrigin(config.url)) {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      config.headers['x-supabase-uid'] = session.user.id;
+    // The signed access token is what the server actually verifies.
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
     }
   }
   return config;

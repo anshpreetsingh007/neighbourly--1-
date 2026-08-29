@@ -164,9 +164,6 @@ export const PostJob: React.FC = () => {
       setIsSubmitting(true);
       try {
         const res = await axios.post('/api/jobs', {
-          poster_id: user.id,
-          poster_email: user.email,
-          poster_name: user.user_metadata?.full_name || 'Anonymous',
           title: formData.title,
           category: formData.category,
           description: formData.description,

@@ -101,9 +101,7 @@ export const MapView: React.FC = () => {
     }
 
     try {
-        const { data: me } = await axios.get('/api/users/me', {
-            headers: { 'x-supabase-uid': user.id }
-        });
+        const { data: me } = await axios.get('/api/users/me');
         console.log('Current user record (Map):', me);
 
         if (!me || !me.id) {

@@ -22,9 +22,7 @@ export const Settings: React.FC = () => {
     const fetchProfile = async () => {
       if (!user) return;
       try {
-        const { data } = await axios.get('/api/users/me', {
-          headers: { 'x-supabase-uid': user.id }
-        });
+        const { data } = await axios.get('/api/users/me');
         setName(data?.name || '');
         setNeighbourhood(data?.neighbourhood || '');
         setBio(data?.bio || '');
@@ -81,8 +79,6 @@ export const Settings: React.FC = () => {
     setIsSaving(true);
     try {
       await axios.post('/api/users/profile', {
-        supabase_uid: user.id,
-        email: user.email,
         name,
         neighbourhood,
         bio,

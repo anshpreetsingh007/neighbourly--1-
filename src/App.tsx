@@ -27,7 +27,7 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    axios.get('/api/users/me', { headers: { 'x-supabase-uid': user.id } })
+    axios.get('/api/users/me')
       .then(({ data }) => {
         if (!cancelled) setNeedsProfileSetup(!data?.neighbourhood);
       })

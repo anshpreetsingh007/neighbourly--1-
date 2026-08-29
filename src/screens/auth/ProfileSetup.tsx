@@ -50,8 +50,6 @@ export const ProfileSetup: React.FC = () => {
     setIsLoading(true);
     try {
       await axios.post('/api/users/profile', {
-        supabase_uid: user.id,
-        email: user.email,
         name,
         neighbourhood,
         avatar_url: avatarUrl

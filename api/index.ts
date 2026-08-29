@@ -8,9 +8,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
+import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
+import type { RequestHandler, Request } from 'express';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// Note: Database_passwoerd has been corrected to DATABASE_URL in .env.local
+
+// Load .env.local for local development. Values already present in the
+// environment (e.g. those Vercel injects) always win - dotenv never overrides.
+dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 const prisma = new PrismaClient();
 
 // Configure Cloudinary
@@ -21,7 +28,125 @@ cloudinary.config({
   secure: true
 });
 
+// Server-side Supabase client, used only to verify caller access tokens. The anon
+// key is sufficient for auth.getUser() and carries no elevated privileges.
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+const supabaseAuth = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
+
+if (!supabaseAuth) {
+  console.warn(
+    'SUPABASE_URL / SUPABASE_ANON_KEY are not set - authenticated routes will reject every request.'
+  );
+}
+
+interface AuthedRequest extends Request {
+  authUser?: SupabaseUser;
+}
+
+/**
+ * Verifies the caller's Supabase access token and attaches the resolved user to
+ * the request. Fails closed: a missing token, an invalid token, or missing server
+ * config all result in a rejection rather than an unauthenticated pass-through.
+ *
+ * This trusts the signed JWT, not a client-supplied id header.
+ */
+const requireAuth: RequestHandler = async (req, res, next) => {
+  if (!supabaseAuth) {
+    console.error('Rejecting authenticated request: Supabase auth is not configured.');
+    return res.status(503).json({ error: 'Authentication is not configured on the server' });
+  }
+
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+
+  if (!token) {
+    return res.status(401).json({ error: 'Missing bearer token' });
+  }
+
+  try {
+    const { data, error } = await supabaseAuth.auth.getUser(token);
+    if (error || !data?.user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    (req as AuthedRequest).authUser = data.user;
+    next();
+  } catch (err) {
+    console.error('Token verification failed:', err);
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+/** Narrows a request that has already passed through requireAuth. */
+function authed(req: Request): SupabaseUser {
+  const user = (req as AuthedRequest).authUser;
+  if (!user) {
+    // Unreachable via requireAuth; guards against a route wired up without it.
+    throw new Error('authed() called on a route that is not behind requireAuth');
+  }
+  return user;
+}
+
+/**
+ * Maps a verified Supabase user onto our local User row, creating it on first
+ * sight. Profile details come from the token's own claims, never from the body.
+ */
+async function getOrCreateDbUser(authUser: SupabaseUser) {
+  const metadata = (authUser.user_metadata || {}) as Record<string, unknown>;
+  const name =
+    (typeof metadata.full_name === 'string' && metadata.full_name) ||
+    (typeof metadata.name === 'string' && metadata.name) ||
+    'Anonymous Neighbour';
+
+  return prisma.user.upsert({
+    where: { supabase_uid: authUser.id },
+    update: {},
+    create: {
+      supabase_uid: authUser.id,
+      email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
+      name,
+      neighbourhood: 'Local area',
+    },
+  });
+}
+
+/** True only if userId is an exact member of the conversation's participant list. */
+async function isParticipant(conversationId: string, userId: string) {
+  if (!conversationId) return false;
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+  });
+  return !!conversation && conversation.participant_ids.split(',').includes(userId);
+}
+
+/**
+ * Socket.IO equivalent of requireAuth. Runs once at handshake; the resolved user
+ * is stashed on socket.data so individual events never trust client-sent ids.
+ */
+const authenticateSocket = async (socket: any, next: (err?: Error) => void) => {
+  if (!supabaseAuth) return next(new Error('Authentication is not configured'));
+
+  const token = socket.handshake?.auth?.token;
+  if (!token) return next(new Error('Missing access token'));
+
+  try {
+    const { data, error } = await supabaseAuth.auth.getUser(token);
+    if (error || !data?.user) return next(new Error('Invalid or expired token'));
+    socket.data.user = await getOrCreateDbUser(data.user);
+    next();
+  } catch (err) {
+    console.error('Socket token verification failed:', err);
+    next(new Error('Invalid or expired token'));
+  }
+};
+
 async function startServer() {
+
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
@@ -40,35 +165,38 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
-  // Socket.io Namespaces
+  // Socket.io Namespaces. Both require a verified token at handshake time.
   const chatNamespace = io.of('/chat');
+  chatNamespace.use(authenticateSocket);
   chatNamespace.on('connection', (socket) => {
-    socket.on('join_room', (roomId) => {
+    const me = socket.data.user;
+
+    socket.on('join_room', async (roomId) => {
+      // Joining a room grants you every message broadcast to it, so membership
+      // has to be checked here and not only on the REST read path.
+      if (!(await isParticipant(roomId, me.id))) {
+        socket.emit('room_error', 'You are not a participant in that conversation');
+        return;
+      }
       socket.join(roomId);
     });
 
     socket.on('send_message', async (data) => {
-      const { conversation_id, sender_id, body } = data;
-      try {
-        // The sender_id from frontend might be a Supabase UID
-        const user = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { id: sender_id },
-                    { supabase_uid: sender_id }
-                ]
-            }
-        });
+      // sender_id is deliberately NOT read from the payload - the sender is
+      // whoever authenticated at handshake.
+      const { conversation_id, body } = data || {};
+      if (!conversation_id || !body) return;
 
-        if (!user) {
-            console.error('User not found for message:', sender_id);
-            return;
+      try {
+        if (!(await isParticipant(conversation_id, me.id))) {
+          socket.emit('room_error', 'You are not a participant in that conversation');
+          return;
         }
 
         const message = await prisma.message.create({
           data: {
             conversation_id,
-            sender_id: user.id,
+            sender_id: me.id,
             body,
             type: 'TEXT'
           },
@@ -79,13 +207,13 @@ async function startServer() {
         // Notify the other participant(s) in the conversation
         const conversation = await prisma.conversation.findUnique({ where: { id: conversation_id } });
         if (conversation) {
-          const recipientIds = conversation.participant_ids.split(',').filter(id => id && id !== user.id);
+          const recipientIds = conversation.participant_ids.split(',').filter(id => id && id !== me.id);
           for (const recipientId of recipientIds) {
             const notification = await prisma.notification.create({
               data: {
                 user_id: recipientId,
                 type: 'MESSAGE',
-                title: `New message from ${user.name || 'a neighbour'}`,
+                title: `New message from ${me.name || 'a neighbour'}`,
                 body: body.length > 120 ? `${body.slice(0, 120)}...` : body,
                 data: JSON.stringify({ conversation_id })
               }
@@ -103,10 +231,10 @@ async function startServer() {
   });
 
   const notificationNamespace = io.of('/notifications');
+  notificationNamespace.use(authenticateSocket);
   notificationNamespace.on('connection', (socket) => {
-    socket.on('join_user_room', (userId) => {
-      socket.join(userId);
-    });
+    // Room is derived from the verified identity, not a client-supplied id.
+    socket.join(socket.data.user.id);
   });
 
   // API Routes
@@ -115,10 +243,10 @@ async function startServer() {
   });
 
   // Jobs API
-  app.get('/api/jobs', async (req, res) => {
+  app.get('/api/jobs', requireAuth, async (req, res) => {
     try {
       const jobs = await prisma.job.findMany({
-        include: { 
+        include: {
           poster: true,
           photos: true,
           applications: true
@@ -132,38 +260,23 @@ async function startServer() {
     }
   });
 
-  app.post('/api/jobs', async (req, res) => {
-    console.log('Post Job Request received:', req.body);
-    const { 
-      poster_id, 
-      title, 
-      category, 
-      description, 
-      urgency, 
-      lat, 
-      lng, 
-      address, 
-      budget_min, 
+  app.post('/api/jobs', requireAuth, async (req, res) => {
+    const {
+      title,
+      category,
+      description,
+      urgency,
+      lat,
+      lng,
+      address,
+      budget_min,
       budget_max,
-      photos,
-      poster_email,
-      poster_name
+      photos
     } = req.body;
 
     try {
-      // Robustly find or create the user in the database
-      const user = await prisma.user.upsert({
-        where: { supabase_uid: poster_id },
-        update: {},
-        create: {
-          supabase_uid: poster_id,
-          email: poster_email || `user_${poster_id.slice(0, 8)}@example.com`,
-          name: poster_name || 'Anonymous Neighbour',
-          neighbourhood: address?.split(',').slice(-2, -1)[0]?.trim() || 'Local area'
-        }
-      });
-
-      console.log('User synced for job posting:', user.id);
+      // The poster is whoever holds the token. A poster_id in the body is ignored.
+      const user = await getOrCreateDbUser(authed(req));
 
       const job = await prisma.job.create({
         data: {
@@ -186,8 +299,7 @@ async function startServer() {
         },
         include: { photos: true, poster: true }
       });
-      
-      console.log('Job created successfully:', job.id);
+
       res.status(201).json(job);
     } catch (err) {
       console.error('CRITICAL: Failed to create job:', err);
@@ -195,11 +307,11 @@ async function startServer() {
     }
   });
 
-  app.get('/api/jobs/:id', async (req, res) => {
+  app.get('/api/jobs/:id', requireAuth, async (req, res) => {
     try {
       const job = await prisma.job.findUnique({
         where: { id: req.params.id },
-        include: { 
+        include: {
           poster: true,
           photos: true,
           applications: {
@@ -215,30 +327,9 @@ async function startServer() {
   });
 
   // Users API
-  app.get('/api/users/me', async (req, res) => {
-    const supabase_uid = req.headers['x-supabase-uid'] as string;
-    
-    if (!supabase_uid) {
-      return res.json({ id: '1', name: 'Guest', email: 'guest@example.com' });
-    }
-
+  app.get('/api/users/me', requireAuth, async (req, res) => {
     try {
-      let user = await prisma.user.findUnique({
-        where: { supabase_uid }
-      });
-
-      // If user doesn't exist in our DB yet, create a skeleton record
-      if (!user) {
-          user = await prisma.user.create({
-              data: {
-                  supabase_uid,
-                  email: `user_${supabase_uid.slice(0, 8)}@example.com`, // Placeholder email
-                  name: 'Anonymous Neighbour',
-                  neighbourhood: 'New Area'
-              }
-          });
-          console.log('Created new user record for synced session:', user.id);
-      }
+      const user = await getOrCreateDbUser(authed(req));
 
       const [jobs_posted_count, reviews_count, ratingAgg] = await Promise.all([
         prisma.job.count({ where: { poster_id: user.id } }),
@@ -258,16 +349,18 @@ async function startServer() {
     }
   });
 
-  app.post('/api/users/profile', async (req, res) => {
-    const { supabase_uid, email, name, neighbourhood, avatar_url, bio } = req.body;
+  app.post('/api/users/profile', requireAuth, async (req, res) => {
+    // Identity comes from the token; only profile fields are taken from the body.
+    const authUser = authed(req);
+    const { name, neighbourhood, avatar_url, bio } = req.body;
 
     try {
       const user = await prisma.user.upsert({
-        where: { supabase_uid },
+        where: { supabase_uid: authUser.id },
         update: { name, neighbourhood, avatar_url, bio },
         create: {
-          supabase_uid,
-          email,
+          supabase_uid: authUser.id,
+          email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
           name,
           neighbourhood,
           avatar_url,
@@ -282,16 +375,13 @@ async function startServer() {
   });
 
   // Conversations & Messages API
-  app.get('/api/conversations', async (req, res) => {
-    const supabase_uid = req.headers['x-supabase-uid'] as string;
-    if (!supabase_uid) return res.status(401).json({ error: 'Unauthorized' });
-
+  app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
-      const user = await prisma.user.findUnique({ where: { supabase_uid } });
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      const user = await getOrCreateDbUser(authed(req));
 
-      // In SQLite, we use 'contains' on the string field
-      const conversations = await prisma.conversation.findMany({
+      // 'contains' narrows in the DB, but it is a substring match on a joined
+      // string, so the exact membership filter below is what actually decides.
+      const candidates = await prisma.conversation.findMany({
         where: {
           participant_ids: {
             contains: user.id
@@ -306,6 +396,10 @@ async function startServer() {
         }
       });
 
+      const conversations = candidates.filter(conv =>
+        conv.participant_ids.split(',').includes(user.id)
+      );
+
       // Fetch participants for each conversation manually since they are stored as a string
       const conversationsWithParticipants = await Promise.all(conversations.map(async (conv) => {
         const pIds = conv.participant_ids.split(',');
@@ -316,12 +410,20 @@ async function startServer() {
 
       res.json(conversationsWithParticipants);
     } catch (err) {
+      console.error('Failed to fetch conversations:', err);
       res.status(500).json({ error: 'Failed to fetch conversations' });
     }
   });
 
-  app.get('/api/conversations/:id/messages', async (req, res) => {
+  app.get('/api/conversations/:id/messages', requireAuth, async (req, res) => {
     try {
+      const me = await getOrCreateDbUser(authed(req));
+
+      // Reading a thread requires being in it.
+      if (!(await isParticipant(req.params.id, me.id))) {
+        return res.status(403).json({ error: 'You are not a participant in this conversation' });
+      }
+
       const messages = await prisma.message.findMany({
         where: { conversation_id: req.params.id },
         include: { sender: true },
@@ -329,20 +431,27 @@ async function startServer() {
       });
       res.json(messages);
     } catch (err) {
+      console.error('Failed to fetch messages:', err);
       res.status(500).json({ error: 'Failed to fetch messages' });
     }
   });
 
-  app.post('/api/conversations', async (req, res) => {
+  app.post('/api/conversations', requireAuth, async (req, res) => {
     const { job_id, participant_ids } = req.body; // participant_ids is array of strings
-    if (!participant_ids || participant_ids.length < 2) {
+    if (!Array.isArray(participant_ids) || participant_ids.length < 2) {
         return res.status(400).json({ error: 'At least 2 participants required' });
     }
 
-    // Sort IDs for consistent lookup
-    const sortedIds = [...participant_ids].sort().join(',');
-
     try {
+      // You may only open a conversation you are yourself part of.
+      const me = await getOrCreateDbUser(authed(req));
+      if (!participant_ids.includes(me.id)) {
+        return res.status(403).json({ error: 'You cannot create a conversation you are not part of' });
+      }
+
+      // Sort IDs for consistent lookup
+      const sortedIds = [...participant_ids].sort().join(',');
+
       const existing = await prisma.conversation.findFirst({
         where: {
           job_id,
@@ -366,24 +475,14 @@ async function startServer() {
   });
 
   // Application API
-  app.post('/api/jobs/:id/apply', async (req, res) => {
+  app.post('/api/jobs/:id/apply', requireAuth, async (req, res) => {
     const { id: job_id } = req.params;
-    const { helper_supabase_uid, message, proposed_price } = req.body;
-
-    console.log(`Apply request: Job ${job_id} from ${helper_supabase_uid}`);
+    const { message, proposed_price } = req.body;
 
     try {
-      // Ensure helper exists in DB
-      const helper = await prisma.user.upsert({
-          where: { supabase_uid: helper_supabase_uid },
-          update: {},
-          create: {
-              supabase_uid: helper_supabase_uid,
-              email: `user_${helper_supabase_uid.slice(0, 8)}@example.com`,
-              name: 'Anonymous Neighbour',
-              neighbourhood: 'Local area'
-          }
-      });
+      // The helper is whoever holds the token. A helper_supabase_uid in the
+      // body is ignored entirely.
+      const helper = await getOrCreateDbUser(authed(req));
 
       const job = await prisma.job.findUnique({ where: { id: job_id }, include: { poster: true } });
       if (!job) return res.status(404).json({ error: 'Job not found' });
@@ -402,7 +501,6 @@ async function startServer() {
           const conversation = await prisma.conversation.findFirst({
               where: { job_id, participant_ids: sortedIds }
           });
-          console.log('User already applied, returning existing conversation:', conversation?.id);
           return res.json({ application: existingApp, conversation_id: conversation?.id });
       }
 
@@ -411,7 +509,7 @@ async function startServer() {
         data: {
           job_id,
           helper_id: helper.id,
-          message: message || `I'm interested in helping with: ${job.title}`,
+          message: message || `I am interested in helping with: ${job.title}`,
           proposed_price: parseFloat(proposed_price) || job.budget_min,
           status: 'PENDING'
         }
@@ -419,7 +517,7 @@ async function startServer() {
 
       // Automatically start a conversation
       const sortedIds = [helper.id, job.poster_id].sort().join(',');
-      
+
       let conversation = await prisma.conversation.findFirst({
           where: { job_id, participant_ids: sortedIds }
       });
@@ -428,9 +526,6 @@ async function startServer() {
           conversation = await prisma.conversation.create({
               data: { job_id, participant_ids: sortedIds }
           });
-          console.log('Created new conversation for application:', conversation.id);
-      } else {
-          console.log('Using existing conversation for application:', conversation.id);
       }
 
       // Send initial message
@@ -438,7 +533,7 @@ async function startServer() {
         data: {
             conversation_id: conversation.id,
             sender_id: helper.id,
-            body: message || `Hey! I'd like to help with "${job.title}".`,
+            body: message || `Hey! I would like to help with "${job.title}".`,
             type: 'TEXT'
         }
       });
@@ -458,19 +553,14 @@ async function startServer() {
       res.status(201).json({ application, conversation_id: conversation.id });
     } catch (err: any) {
       console.error('Failed to apply:', err);
-      res.status(500).json({ error: err.message || 'Failed to apply' });
+      res.status(500).json({ error: 'Failed to apply' });
     }
   });
 
   // Notifications API
-  app.get('/api/notifications', async (req, res) => {
-    const supabase_uid = req.headers['x-supabase-uid'] as string;
-    if (!supabase_uid) return res.status(401).json({ error: 'Unauthorized' });
-
+  app.get('/api/notifications', requireAuth, async (req, res) => {
     try {
-      const user = await prisma.user.findUnique({ where: { supabase_uid } });
-      if (!user) return res.status(404).json({ error: 'User not found' });
-
+      const user = await getOrCreateDbUser(authed(req));
       const notifications = await prisma.notification.findMany({
         where: { user_id: user.id },
         orderBy: { created_at: 'desc' }
@@ -482,13 +572,22 @@ async function startServer() {
     }
   });
 
-  app.post('/api/notifications/:id/read', async (req, res) => {
+  app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
     try {
-      const notification = await prisma.notification.update({
+      const user = await getOrCreateDbUser(authed(req));
+
+      // Ownership must be checked before mutating: without this, any signed-in
+      // user could mark any other user's notification as read just by guessing an id.
+      const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
+      if (!notification || notification.user_id !== user.id) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+
+      const updated = await prisma.notification.update({
         where: { id: req.params.id },
         data: { read_at: new Date() }
       });
-      res.json(notification);
+      res.json(updated);
     } catch (err) {
       console.error('Failed to mark notification read:', err);
       res.status(500).json({ error: 'Failed to mark notification read' });
@@ -496,11 +595,16 @@ async function startServer() {
   });
 
   // Cloudinary Signing API
-  app.post('/api/uploads/sign', (req, res) => {
+  app.post('/api/uploads/sign', requireAuth, (req, res) => {
+    if (!process.env.CLOUDINARY_API_SECRET || !process.env.CLOUDINARY_CLOUD_NAME) {
+      console.error('Cannot sign upload: Cloudinary credentials are missing.');
+      return res.status(503).json({ error: 'Uploads are not configured on the server' });
+    }
+
     const timestamp = Math.round(new Date().getTime() / 1000);
     const signature = cloudinary.utils.api_sign_request(
       { timestamp, folder: 'neighbourly_jobs' },
-      process.env.CLOUDINARY_API_SECRET!
+      process.env.CLOUDINARY_API_SECRET
     );
 
     res.json({
@@ -520,7 +624,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else if (!process.env.VERCEL) {
-    // Only serve static files if NOT on Vercel. 
+    // Only serve static files if NOT on Vercel.
     // Vercel serves the 'dist' folder automatically from its global CDN.
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
