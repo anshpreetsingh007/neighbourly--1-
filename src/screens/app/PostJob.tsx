@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { Camera, MapPin, ChevronRight, ChevronLeft, CheckCircle2, X as CloseIcon, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
@@ -31,6 +32,7 @@ const MapPreview = ({ center }: { center: [number, number] }) => {
 export const PostJob: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
@@ -127,7 +129,7 @@ export const PostJob: React.FC = () => {
       }));
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('Failed to upload image.');
+      showToast('Could not upload that image. Please try again.', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -157,7 +159,7 @@ export const PostJob: React.FC = () => {
 
     if (step === 3) {
       if (!user) {
-        alert('You must be signed in to post a job.');
+        showToast('Please sign in to post a job.');
         return;
       }
 
@@ -181,7 +183,7 @@ export const PostJob: React.FC = () => {
       } catch (err) {
         console.error('Failed to post job:', err);
         const errorMsg = axios.isAxiosError(err) ? err.response?.data?.error : 'Unknown error';
-        alert(`Failed to post job: ${errorMsg}. Please check console.`);
+        showToast(errorMsg || 'Could not post your job. Please try again.', 'error');
       } finally {
         setIsSubmitting(false);
       }

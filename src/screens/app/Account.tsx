@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 import { GlassCard, Button } from '../../components/UI';
 import axios from 'axios';
 import { clsx } from 'clsx';
@@ -20,6 +21,7 @@ import {
 export const Account: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [profile, setProfile] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -35,13 +37,22 @@ export const Account: React.FC = () => {
     fetchProfile();
   }, [user]);
 
+  // Settings and Notifications are real pages; the rest are not built yet.
   const menuItems = [
     { icon: Settings, label: 'Settings', color: 'text-white/50', path: '/account/settings' },
     { icon: Bell, label: 'Notifications', color: 'text-sky-status', path: '/account/notifications' },
-    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent', path: '/account/payments' },
-    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status', path: '/account/verification' },
-    { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50', path: '/account/devices' },
+    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent', path: null },
+    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status', path: null },
+    { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50', path: null },
   ];
+
+  const handleMenuClick = (item: (typeof menuItems)[number]) => {
+    if (item.path) {
+      navigate(item.path);
+    } else {
+      showToast(`${item.label} isn't available yet - coming soon.`);
+    }
+  };
 
   return (
     <div className="p-6 space-y-8">
@@ -49,9 +60,9 @@ export const Account: React.FC = () => {
       <section className="flex flex-col items-center text-center space-y-4">
         <div className="relative">
           <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-white/10 shadow-2xl">
-            <img 
-              src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/200/200"} 
-              alt="Profile" 
+            <img
+              src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/200/200"}
+              alt="Profile"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
@@ -62,9 +73,9 @@ export const Account: React.FC = () => {
             </div>
           )}
         </div>
-        
+
         <div>
-          <h1 className="text-3xl font-display font-bold">{user?.user_metadata?.full_name || profile?.name || 'Neighbour'}</h1>
+          <h1 className="text-3xl font-display font-bold">{profile?.name || user?.user_metadata?.full_name || 'Neighbour'}</h1>
           <p className="text-white/50 font-medium">
             {profile?.neighbourhood || 'Neighbourhood not set'} • Member since {new Date(user?.created_at || Date.now()).getFullYear()}
           </p>
@@ -92,6 +103,22 @@ export const Account: React.FC = () => {
 
       {/* Menu */}
       <section className="space-y-3">
+        <GlassCard hover className="p-4 flex items-center justify-between cursor-pointer">
+          <button
+            type="button"
+            onClick={() => navigate('/my-jobs')}
+            className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-white/5 text-amber-accent">
+                <Briefcase className="w-6 h-6" />
+              </div>
+              <span className="font-bold">Your Jobs &amp; Applicants</span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-white/20" />
+          </button>
+        </GlassCard>
+
         {menuItems.map((item) => (
           <GlassCard
             key={item.label}
@@ -100,7 +127,7 @@ export const Account: React.FC = () => {
           >
             <button
               type="button"
-              onClick={() => navigate(item.path)}
+              onClick={() => handleMenuClick(item)}
               className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
             >
               <div className="flex items-center gap-4">
@@ -116,8 +143,8 @@ export const Account: React.FC = () => {
       </section>
 
       {/* Logout */}
-      <Button 
-        variant="danger" 
+      <Button
+        variant="danger"
         className="w-full py-4 rounded-2xl gap-3"
         onClick={signOut}
       >

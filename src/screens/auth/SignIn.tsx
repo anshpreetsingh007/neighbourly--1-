@@ -3,15 +3,20 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Button, GlassCard } from '../../components/UI';
+import { useToast } from '../../components/Toast';
 import { Mail, Lock, Chrome, Facebook, Apple } from 'lucide-react';
 
 export const SignIn: React.FC = () => {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -32,13 +37,22 @@ export const SignIn: React.FC = () => {
       const { error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          // Lands in user_metadata, which getOrCreateDbUser() reads on the
+          // server to build the profile - no extra request needed.
+          data: {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          },
+        },
       });
       if (error) {
         setError(error.message);
         setIsLoading(false);
       } else {
         // Supabase might require email confirmation
-        alert('Check your email for the confirmation link!');
+        setSentTo(email);
         setIsLoading(false);
       }
     } else {
@@ -72,7 +86,7 @@ export const SignIn: React.FC = () => {
     if (data?.url) {
       const authWindow = window.open(data.url, 'oauth_popup', 'width=600,height=700');
       if (!authWindow) {
-        alert('Please allow popups to sign in with Google.');
+        showToast('Please allow popups to sign in with Google.');
       }
     }
   };
@@ -92,6 +106,19 @@ export const SignIn: React.FC = () => {
             {isSignUp ? 'Join the Neighbourly community' : 'Sign in to continue to Neighbourly'}
           </p>
 
+          {/* Persistent rather than a toast: the user has to leave the app,
+              open their inbox and come back, so this must still be here when
+              they return. */}
+          {sentTo && (
+            <div className="bg-emerald-status/15 border border-emerald-status/40 text-emerald-status p-4 rounded-xl mb-6 text-sm space-y-1">
+              <p className="font-bold">Check your inbox</p>
+              <p className="opacity-80 leading-relaxed">
+                We sent a confirmation link to <span className="font-bold">{sentTo}</span>. Click it
+                to finish setting up your account.
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="bg-rose-status/20 border border-rose-status/50 text-rose-status p-3 rounded-xl mb-6 text-sm">
               {error}
@@ -99,6 +126,41 @@ export const SignIn: React.FC = () => {
           )}
 
           <form onSubmit={handleAuth} className="space-y-4">
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70 ml-1">First Name</label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    placeholder="Karan"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70 ml-1">
+                    Last Name <span className="text-white/30 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    placeholder="Pabla"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isSignUp && (
+              <p className="text-xs text-white/40 ml-1 -mt-1">
+                Neighbours will see you as "{firstName.trim() || 'Karan'}
+                {lastName.trim() ? ` ${lastName.trim().charAt(0).toUpperCase()}.` : ''}"
+              </p>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-white/70 ml-1">Email Address</label>
               <div className="relative">
@@ -106,7 +168,7 @@ export const SignIn: React.FC = () => {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setSentTo(null); }}
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                   placeholder="name@example.com"
                   required

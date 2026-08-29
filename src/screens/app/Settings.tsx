@@ -4,12 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { ChevronLeft, User, MapPin, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/Toast';
 import axios from 'axios';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [name, setName] = useState('');
+  const { showToast } = useToast();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [neighbourhood, setNeighbourhood] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -23,7 +26,8 @@ export const Settings: React.FC = () => {
       if (!user) return;
       try {
         const { data } = await axios.get('/api/users/me');
-        setName(data?.name || '');
+        setFirstName(data?.first_name || '');
+        setLastName(data?.last_name || '');
         setNeighbourhood(data?.neighbourhood || '');
         setBio(data?.bio || '');
         setAvatarUrl(data?.avatar_url || '');
@@ -58,7 +62,7 @@ export const Settings: React.FC = () => {
       setAvatarUrl(uploadData.secure_url);
     } catch (err) {
       console.error('Avatar upload failed:', err);
-      alert('Failed to upload avatar.');
+      showToast('Could not upload that photo. Please try again.', 'error');
     } finally {
       setIsUploading(false);
     }
@@ -67,8 +71,8 @@ export const Settings: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!name.trim()) {
-      setError('Name is required.');
+    if (!firstName.trim()) {
+      setError('First name is required.');
       return;
     }
     if (!neighbourhood.trim()) {
@@ -79,11 +83,13 @@ export const Settings: React.FC = () => {
     setIsSaving(true);
     try {
       await axios.post('/api/users/profile', {
-        name,
+        first_name: firstName,
+        last_name: lastName,
         neighbourhood,
         bio,
         avatar_url: avatarUrl
       });
+      showToast('Profile updated.', 'success');
       navigate('/account');
     } catch (err) {
       console.error('Failed to save settings:', err);
@@ -140,17 +146,38 @@ export const Settings: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">Full Name</label>
+              <label className="text-sm font-medium text-white/70 ml-1">First Name</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
                 <input
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   className="w-full glass rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
-                  placeholder="John Doe"
+                  placeholder="Karan"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white/70 ml-1">
+                Last Name <span className="text-white/30 font-normal">(optional)</span>
+              </label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full glass rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                  placeholder="Pabla"
+                />
+              </div>
+              <p className="text-xs text-white/40 ml-1">
+                Neighbours see "{firstName.trim() || 'Karan'}
+                {lastName.trim() ? ` ${lastName.trim().charAt(0).toUpperCase()}.` : ''}" - your full
+                surname is never shown publicly.
+              </p>
             </div>
 
             <div className="space-y-2">

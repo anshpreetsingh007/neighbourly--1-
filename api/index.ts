@@ -47,6 +47,7 @@ if (!supabaseAuth) {
 
 interface AuthedRequest extends Request {
   authUser?: SupabaseUser;
+  dbUser?: Awaited<ReturnType<typeof getOrCreateDbUser>>;
 }
 
 /**
@@ -74,13 +75,38 @@ const requireAuth: RequestHandler = async (req, res, next) => {
     if (error || !data?.user) {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    // Resolve the local row once here so every route shares it, and so a ban is
+    // enforced on every authenticated path - including /api/uploads/sign, which
+    // does not otherwise need a DB user.
+    const dbUser = await getOrCreateDbUser(data.user);
+    if (dbUser.is_banned) {
+      return res.status(403).json({ error: 'This account has been suspended' });
+    }
+
     (req as AuthedRequest).authUser = data.user;
+    (req as AuthedRequest).dbUser = dbUser;
     next();
   } catch (err) {
     console.error('Token verification failed:', err);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
+
+/**
+ * The only User columns another user is ever allowed to see. Everything else on
+ * the row - email, phone, supabase_uid, lat/lng, stripe ids, is_banned - stays
+ * server-side. Use this wherever a User is attached to a response that someone
+ * other than that user will read.
+ */
+const PUBLIC_USER_SELECT = {
+  id: true,
+  name: true,
+  avatar_url: true,
+  bio: true,
+  neighbourhood: true,
+  is_id_verified: true,
+  created_at: true,
+} as const;
 
 /** Narrows a request that has already passed through requireAuth. */
 function authed(req: Request): SupabaseUser {
@@ -92,16 +118,54 @@ function authed(req: Request): SupabaseUser {
   return user;
 }
 
+/** The local User row for the caller, resolved once by requireAuth. */
+function currentUser(req: Request) {
+  const user = (req as AuthedRequest).dbUser;
+  if (!user) {
+    throw new Error('currentUser() called on a route that is not behind requireAuth');
+  }
+  return user;
+}
+
+/**
+ * The name other users see: first name plus a last initial, e.g. "Karan P.".
+ * Full surnames stay server-side - people meet strangers at their homes through
+ * this app, so a browsable list of full names is a safety problem, not just a
+ * privacy one. `name` is the only one of these in PUBLIC_USER_SELECT.
+ */
+function publicDisplayName(first?: string | null, last?: string | null) {
+  const f = (first || '').trim();
+  const l = (last || '').trim();
+  if (!f && !l) return 'Anonymous Neighbour';
+  if (!l) return f;
+  return `${f} ${l.charAt(0).toUpperCase()}.`;
+}
+
+/** Pulls whatever name parts a provider gave us out of the token's claims. */
+function nameFromMetadata(metadata: Record<string, unknown>) {
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+  let first = str(metadata.first_name) || str(metadata.given_name);
+  let last = str(metadata.last_name) || str(metadata.family_name);
+
+  // OAuth providers usually give one combined name; split on the first space.
+  if (!first) {
+    const full = str(metadata.full_name) || str(metadata.name);
+    if (full) {
+      const parts = full.split(/\s+/);
+      first = parts.shift() || '';
+      last = last || parts.join(' ');
+    }
+  }
+  return { first, last };
+}
+
 /**
  * Maps a verified Supabase user onto our local User row, creating it on first
  * sight. Profile details come from the token's own claims, never from the body.
  */
 async function getOrCreateDbUser(authUser: SupabaseUser) {
   const metadata = (authUser.user_metadata || {}) as Record<string, unknown>;
-  const name =
-    (typeof metadata.full_name === 'string' && metadata.full_name) ||
-    (typeof metadata.name === 'string' && metadata.name) ||
-    'Anonymous Neighbour';
+  const { first, last } = nameFromMetadata(metadata);
 
   return prisma.user.upsert({
     where: { supabase_uid: authUser.id },
@@ -109,10 +173,76 @@ async function getOrCreateDbUser(authUser: SupabaseUser) {
     create: {
       supabase_uid: authUser.id,
       email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
-      name,
-      neighbourhood: 'Local area',
+      first_name: first || null,
+      last_name: last || null,
+      name: publicDisplayName(first, last),
+      // Deliberately left null: AuthGuard treats a missing neighbourhood as
+      // "this profile is incomplete" and routes the user to /profile-setup.
+      // Filling in a placeholder here would silently skip that step.
     },
   });
+}
+
+/**
+ * Stable pseudo-random offset in [-1, 1) derived from a string, so a given job
+ * always blurs to the same spot instead of jittering on every request (which
+ * would let someone average many reads back to the true position).
+ */
+function stableUnit(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (Math.imul(h, 31) + seed.charCodeAt(i)) | 0;
+  return ((h >>> 0) % 100000) / 100000 * 2 - 1;
+}
+
+/**
+ * Drops the street line from a geocoded address, keeping the neighbourhood and
+ * city. "58 Corner Ridge Mews NE, Cornerstone, Calgary, Alberta" becomes
+ * "Cornerstone, Calgary" - useful for orienting, useless for finding the house.
+ */
+function coarseArea(address?: string | null) {
+  if (!address) return null;
+  const parts = address.split(',').map(p => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts.slice(1, 3).join(', ') : 'Approximate area';
+}
+
+/**
+ * What a job looks like to someone who is not entitled to the exact address.
+ *
+ * Browsing users get the neighbourhood and a pin blurred by a few hundred
+ * metres - enough to judge "is this near me?", not enough to identify the house.
+ * A public list of addresses plus "nobody home Tuesday, fence is broken" is a
+ * safety problem, not just a privacy one.
+ *
+ * The full address is revealed to the poster, and to a helper whose application
+ * has been ACCEPTED.
+ */
+function jobForViewer(job: any, viewerId: string) {
+  const isPoster = job.poster_id === viewerId;
+  const all = job.applications || [];
+  const mine = all.find((a: any) => a.helper_id === viewerId);
+  const isAcceptedHelper = mine?.status === 'ACCEPTED';
+
+  // Who else applied, and what they bid, is the poster's business alone.
+  // Everyone else sees only their own application plus a count.
+  const base = {
+    ...job,
+    applications: isPoster ? all : mine ? [mine] : [],
+    application_count: all.length,
+  };
+
+  if (isPoster || isAcceptedHelper) {
+    return { ...base, location_precision: 'exact' };
+  }
+
+  // ~±400 m; enough to hide which house, small enough to stay useful on a map.
+  const RADIUS_DEG = 0.004;
+  return {
+    ...base,
+    address: coarseArea(job.address),
+    lat: job.lat + stableUnit(job.id + 'lat') * RADIUS_DEG,
+    lng: job.lng + stableUnit(job.id + 'lng') * RADIUS_DEG,
+    location_precision: 'approximate',
+  };
 }
 
 /** True only if userId is an exact member of the conversation's participant list. */
@@ -137,7 +267,9 @@ const authenticateSocket = async (socket: any, next: (err?: Error) => void) => {
   try {
     const { data, error } = await supabaseAuth.auth.getUser(token);
     if (error || !data?.user) return next(new Error('Invalid or expired token'));
-    socket.data.user = await getOrCreateDbUser(data.user);
+    const dbUser = await getOrCreateDbUser(data.user);
+    if (dbUser.is_banned) return next(new Error('This account has been suspended'));
+    socket.data.user = dbUser;
     next();
   } catch (err) {
     console.error('Socket token verification failed:', err);
@@ -200,11 +332,11 @@ async function startServer() {
             body,
             type: 'TEXT'
           },
-          include: { sender: true }
+          include: { sender: { select: PUBLIC_USER_SELECT } }
         });
         chatNamespace.to(conversation_id).emit('receive_message', message);
 
-        // Notify the other participant(s) in the conversation
+        // Notify the other participant(s) in the conversation.
         const conversation = await prisma.conversation.findUnique({ where: { id: conversation_id } });
         if (conversation) {
           const recipientIds = conversation.participant_ids.split(',').filter(id => id && id !== me.id);
@@ -245,15 +377,23 @@ async function startServer() {
   // Jobs API
   app.get('/api/jobs', requireAuth, async (req, res) => {
     try {
+      const me = currentUser(req);
       const jobs = await prisma.job.findMany({
+        // This feed is work you could actually take: not your own postings
+        // (you cannot apply to those), and not jobs already assigned to
+        // someone else. Your own jobs live under Account > Your Jobs.
+        where: {
+          status: 'OPEN',
+          poster_id: { not: me.id },
+        },
         include: {
-          poster: true,
+          poster: { select: PUBLIC_USER_SELECT },
           photos: true,
           applications: true
         },
         orderBy: { created_at: 'desc' }
       });
-      res.json(jobs);
+      res.json(jobs.map(job => jobForViewer(job, me.id)));
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
       res.status(500).json({ error: 'Failed to fetch jobs' });
@@ -276,7 +416,7 @@ async function startServer() {
 
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
 
       const job = await prisma.job.create({
         data: {
@@ -297,7 +437,7 @@ async function startServer() {
             }))
           }
         },
-        include: { photos: true, poster: true }
+        include: { photos: true, poster: { select: PUBLIC_USER_SELECT } }
       });
 
       res.status(201).json(job);
@@ -307,21 +447,180 @@ async function startServer() {
     }
   });
 
+  // Declared before '/api/jobs/:id' on purpose - otherwise Express matches
+  // this path with id === 'mine'.
+  app.get('/api/jobs/mine', requireAuth, async (req, res) => {
+    try {
+      const me = currentUser(req);
+      const jobs = await prisma.job.findMany({
+        where: { poster_id: me.id, status: { not: 'CANCELLED' } },
+        include: {
+          photos: true,
+          applications: {
+            include: { helper: { select: PUBLIC_USER_SELECT } },
+            orderBy: { created_at: 'asc' },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      // Already the poster, so jobForViewer would return these unchanged.
+      res.json(jobs);
+    } catch (err) {
+      console.error('Failed to fetch own jobs:', err);
+      res.status(500).json({ error: 'Failed to fetch your jobs' });
+    }
+  });
+
+  /**
+   * Remove a job you posted.
+   *
+   * Deletes outright only when nobody else is involved yet. Once someone has
+   * applied, other people have put time into this - and there may be messages,
+   * payments or reviews hanging off it - so the job is cancelled instead of
+   * erased. Cancelled jobs drop out of every feed, so it looks like a delete
+   * to the poster while preserving the other side's history.
+   */
+  app.delete('/api/jobs/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const me = currentUser(req);
+
+      const job = await prisma.job.findUnique({
+        where: { id },
+        include: {
+          _count: { select: { applications: true, payments: true, reviews: true } },
+        },
+      });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'You can only delete jobs you posted' });
+      }
+
+      const hasHistory =
+        job._count.applications > 0 || job._count.payments > 0 || job._count.reviews > 0;
+
+      if (hasHistory) {
+        await prisma.job.update({ where: { id }, data: { status: 'CANCELLED' } });
+        return res.json({ deleted: false, cancelled: true });
+      }
+
+      // Photos have a required relation, so they must go first. Conversations
+      // reference the job optionally and are detached by the database.
+      await prisma.$transaction([
+        prisma.jobPhoto.deleteMany({ where: { job_id: id } }),
+        prisma.job.delete({ where: { id } }),
+      ]);
+      res.json({ deleted: true, cancelled: false });
+    } catch (err) {
+      console.error('Failed to delete job:', err);
+      res.status(500).json({ error: 'Failed to delete this job' });
+    }
+  });
+
+  app.get('/api/jobs/:id/applications', requireAuth, async (req, res) => {
+    try {
+      const me = currentUser(req);
+      const job = await prisma.job.findUnique({ where: { id: req.params.id } });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'Only the poster can see who applied' });
+      }
+
+      const applications = await prisma.application.findMany({
+        where: { job_id: req.params.id },
+        include: { helper: { select: PUBLIC_USER_SELECT } },
+        orderBy: { created_at: 'asc' },
+      });
+      res.json(applications);
+    } catch (err) {
+      console.error('Failed to fetch applications:', err);
+      res.status(500).json({ error: 'Failed to fetch applications' });
+    }
+  });
+
+  /**
+   * The poster hires one applicant. This is what flips a job from OPEN to
+   * ASSIGNED, and what unlocks the exact address for that helper - see
+   * jobForViewer.
+   */
+  app.post('/api/jobs/:id/applications/:applicationId/accept', requireAuth, async (req, res) => {
+    const { id: job_id, applicationId } = req.params;
+    try {
+      const me = currentUser(req);
+
+      const job = await prisma.job.findUnique({ where: { id: job_id } });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'Only the person who posted this job can accept an application' });
+      }
+
+      const application = await prisma.application.findUnique({ where: { id: applicationId } });
+      if (!application || application.job_id !== job_id) {
+        return res.status(404).json({ error: 'Application not found for this job' });
+      }
+
+      // Idempotent: accepting the same person twice is not an error.
+      if (application.status === 'ACCEPTED') {
+        return res.json({ application });
+      }
+      if (job.status !== 'OPEN') {
+        return res.status(409).json({ error: 'This job already has someone assigned' });
+      }
+
+      // One transaction, so a job can never end up assigned with two accepted
+      // applications if two requests land at once.
+      const [accepted] = await prisma.$transaction([
+        prisma.application.update({
+          where: { id: applicationId },
+          data: { status: 'ACCEPTED' },
+        }),
+        prisma.application.updateMany({
+          where: { job_id, id: { not: applicationId } },
+          data: { status: 'REJECTED' },
+        }),
+        prisma.job.update({ where: { id: job_id }, data: { status: 'ASSIGNED' } }),
+      ]);
+
+      // Let the hired helper know. Everyone else who applied just sees their
+      // status flip to REJECTED next time they look, which needs no push.
+      const sortedIds = [application.helper_id, job.poster_id].sort().join(',');
+      const conversation = await prisma.conversation.findFirst({
+        where: { job_id, participant_ids: sortedIds },
+      });
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: application.helper_id,
+          type: 'HIRED',
+          title: "You're hired!",
+          body: `${me.name || 'The poster'} accepted your application for "${job.title}"`,
+          data: JSON.stringify({ job_id, conversation_id: conversation?.id })
+        }
+      });
+      notificationNamespace.to(application.helper_id).emit('notification', notification);
+
+      res.json({ application: accepted });
+    } catch (err) {
+      console.error('Failed to accept application:', err);
+      res.status(500).json({ error: 'Failed to accept application' });
+    }
+  });
+
   app.get('/api/jobs/:id', requireAuth, async (req, res) => {
     try {
       const job = await prisma.job.findUnique({
         where: { id: req.params.id },
         include: {
-          poster: true,
+          poster: { select: PUBLIC_USER_SELECT },
           photos: true,
           applications: {
-            include: { helper: true }
+            include: { helper: { select: PUBLIC_USER_SELECT } }
           }
         }
       });
       if (!job) return res.status(404).json({ error: 'Job not found' });
-      res.json(job);
+      res.json(jobForViewer(job, currentUser(req).id));
     } catch (err) {
+      console.error('Failed to fetch job:', err);
       res.status(500).json({ error: 'Failed to fetch job' });
     }
   });
@@ -329,7 +628,7 @@ async function startServer() {
   // Users API
   app.get('/api/users/me', requireAuth, async (req, res) => {
     try {
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
 
       const [jobs_posted_count, reviews_count, ratingAgg] = await Promise.all([
         prisma.job.count({ where: { poster_id: user.id } }),
@@ -352,15 +651,26 @@ async function startServer() {
   app.post('/api/users/profile', requireAuth, async (req, res) => {
     // Identity comes from the token; only profile fields are taken from the body.
     const authUser = authed(req);
-    const { name, neighbourhood, avatar_url, bio } = req.body;
+    const { first_name, last_name, neighbourhood, avatar_url, bio } = req.body;
+
+    const first = typeof first_name === 'string' ? first_name.trim() : '';
+    const last = typeof last_name === 'string' ? last_name.trim() : '';
+
+    if (!first) {
+      return res.status(400).json({ error: 'First name is required' });
+    }
+
+    const name = publicDisplayName(first, last);
 
     try {
       const user = await prisma.user.upsert({
         where: { supabase_uid: authUser.id },
-        update: { name, neighbourhood, avatar_url, bio },
+        update: { first_name: first, last_name: last || null, name, neighbourhood, avatar_url, bio },
         create: {
           supabase_uid: authUser.id,
           email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
+          first_name: first,
+          last_name: last || null,
           name,
           neighbourhood,
           avatar_url,
@@ -374,10 +684,47 @@ async function startServer() {
     }
   });
 
+  // Notifications API
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    try {
+      const user = currentUser(req);
+      const notifications = await prisma.notification.findMany({
+        where: { user_id: user.id },
+        orderBy: { created_at: 'desc' }
+      });
+      res.json(notifications);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+      res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      const user = currentUser(req);
+
+      // Ownership must be checked before mutating: without this, any signed-in
+      // user could mark any other user's notification as read just by guessing an id.
+      const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
+      if (!notification || notification.user_id !== user.id) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+
+      const updated = await prisma.notification.update({
+        where: { id: req.params.id },
+        data: { read_at: new Date() }
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+      res.status(500).json({ error: 'Failed to mark notification read' });
+    }
+  });
+
   // Conversations & Messages API
   app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
-      const user = await getOrCreateDbUser(authed(req));
+      const user = currentUser(req);
 
       // 'contains' narrows in the DB, but it is a substring match on a joined
       // string, so the exact membership filter below is what actually decides.
@@ -404,7 +751,9 @@ async function startServer() {
       const conversationsWithParticipants = await Promise.all(conversations.map(async (conv) => {
         const pIds = conv.participant_ids.split(',');
         const otherId = pIds.find(id => id !== user.id);
-        const otherUser = otherId ? await prisma.user.findUnique({ where: { id: otherId } }) : null;
+        const otherUser = otherId
+          ? await prisma.user.findUnique({ where: { id: otherId }, select: PUBLIC_USER_SELECT })
+          : null;
         return { ...conv, otherUser };
       }));
 
@@ -417,7 +766,7 @@ async function startServer() {
 
   app.get('/api/conversations/:id/messages', requireAuth, async (req, res) => {
     try {
-      const me = await getOrCreateDbUser(authed(req));
+      const me = currentUser(req);
 
       // Reading a thread requires being in it.
       if (!(await isParticipant(req.params.id, me.id))) {
@@ -426,7 +775,7 @@ async function startServer() {
 
       const messages = await prisma.message.findMany({
         where: { conversation_id: req.params.id },
-        include: { sender: true },
+        include: { sender: { select: PUBLIC_USER_SELECT } },
         orderBy: { created_at: 'asc' }
       });
       res.json(messages);
@@ -444,7 +793,7 @@ async function startServer() {
 
     try {
       // You may only open a conversation you are yourself part of.
-      const me = await getOrCreateDbUser(authed(req));
+      const me = currentUser(req);
       if (!participant_ids.includes(me.id)) {
         return res.status(403).json({ error: 'You cannot create a conversation you are not part of' });
       }
@@ -482,9 +831,9 @@ async function startServer() {
     try {
       // The helper is whoever holds the token. A helper_supabase_uid in the
       // body is ignored entirely.
-      const helper = await getOrCreateDbUser(authed(req));
+      const helper = currentUser(req);
 
-      const job = await prisma.job.findUnique({ where: { id: job_id }, include: { poster: true } });
+      const job = await prisma.job.findUnique({ where: { id: job_id } });
       if (!job) return res.status(404).json({ error: 'Job not found' });
 
       if (job.poster_id === helper.id) {
@@ -554,43 +903,6 @@ async function startServer() {
     } catch (err: any) {
       console.error('Failed to apply:', err);
       res.status(500).json({ error: 'Failed to apply' });
-    }
-  });
-
-  // Notifications API
-  app.get('/api/notifications', requireAuth, async (req, res) => {
-    try {
-      const user = await getOrCreateDbUser(authed(req));
-      const notifications = await prisma.notification.findMany({
-        where: { user_id: user.id },
-        orderBy: { created_at: 'desc' }
-      });
-      res.json(notifications);
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
-      res.status(500).json({ error: 'Failed to fetch notifications' });
-    }
-  });
-
-  app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
-    try {
-      const user = await getOrCreateDbUser(authed(req));
-
-      // Ownership must be checked before mutating: without this, any signed-in
-      // user could mark any other user's notification as read just by guessing an id.
-      const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
-      if (!notification || notification.user_id !== user.id) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-
-      const updated = await prisma.notification.update({
-        where: { id: req.params.id },
-        data: { read_at: new Date() }
-      });
-      res.json(updated);
-    } catch (err) {
-      console.error('Failed to mark notification read:', err);
-      res.status(500).json({ error: 'Failed to mark notification read' });
     }
   });
 

@@ -14,6 +14,9 @@ export const ChatThread: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
+  // Our internal DB id. Messages carry sender_id (a User.id), and the sender
+  // object no longer exposes supabase_uid, so this is what we compare against.
+  const [meId, setMeId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -38,6 +41,13 @@ export const ChatThread: React.FC = () => {
   useEffect(() => {
     fetchMessages();
   }, [id]);
+
+  useEffect(() => {
+    if (!user) return;
+    axios.get('/api/users/me')
+      .then(({ data }) => setMeId(data?.id ?? null))
+      .catch(err => console.error('Failed to resolve current user:', err));
+  }, [user]);
 
   useEffect(() => {
     if (socket && id) {
@@ -73,7 +83,7 @@ export const ChatThread: React.FC = () => {
     setNewMessage('');
   };
 
-  const otherParticipant = messages.find(m => m.sender?.supabase_uid !== user?.id)?.sender;
+  const otherParticipant = messages.find(m => m.sender_id !== meId)?.sender;
 
   return (
     <div className="h-screen flex flex-col bg-[#0f172a]/50 relative">
@@ -126,7 +136,7 @@ export const ChatThread: React.FC = () => {
           </div>
         ) : messages.length > 0 ? (
           messages.map((msg, idx) => {
-            const isMe = msg.sender?.supabase_uid === user?.id || msg.sender_id === user?.id; // Allow internal ID too just in case
+            const isMe = msg.sender_id === meId;
             return (
               <motion.div 
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
