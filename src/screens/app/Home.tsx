@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle } from 'lucide-react';
+import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
+
+const URGENCY_OPTIONS = ['FLEXIBLE', 'THIS WEEK', 'ASAP'];
 
 const CATEGORIES = [
   { id: 'snow', name: 'Snow Removal' },
@@ -27,6 +29,9 @@ export const Home: React.FC = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [urgencyFilter, setUrgencyFilter] = useState<string | null>(null);
+  const [maxBudget, setMaxBudget] = useState(1000);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -113,13 +118,22 @@ export const Home: React.FC = () => {
   };
 
   const filteredJobs = jobs.filter(job => {
-    const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          job.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || job.category.toLowerCase() === activeCategory.toLowerCase();
-    return matchesSearch && matchesCategory;
+    const matchesUrgency = !urgencyFilter || job.urgency === urgencyFilter;
+    const matchesBudget = (job.budget_min ?? 0) <= maxBudget;
+    return matchesSearch && matchesCategory && matchesUrgency && matchesBudget;
   });
 
-  const urgentJobs = jobs.filter(job => job.urgency === 'URGENT' || job.urgency === 'EMERGENCY');
+  const activeFilterCount = (urgencyFilter ? 1 : 0) + (maxBudget < 1000 ? 1 : 0);
+
+  const clearFilters = () => {
+    setUrgencyFilter(null);
+    setMaxBudget(1000);
+  };
+
+  const urgentJobs = jobs.filter(job => job.urgency === 'ASAP');
 
   return (
     <div className="p-6 md:p-10 space-y-10">
@@ -155,13 +169,87 @@ export const Home: React.FC = () => {
         </div>
         <Button
           variant="secondary"
-          className="p-5 rounded-2xl border border-white/5 opacity-50 cursor-not-allowed"
-          disabled
-          title="Filters are coming soon"
+          className="p-5 rounded-2xl border border-white/5 relative"
+          onClick={() => setShowFilters(true)}
         >
           <Filter className="w-6 h-6" />
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">
+              {activeFilterCount}
+            </span>
+          )}
         </Button>
       </div>
+
+      {/* Filter Panel */}
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center p-0 md:p-6"
+            onClick={() => setShowFilters(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full md:max-w-md glass rounded-t-[2.5rem] md:rounded-[2rem] p-8 border border-white/10 bg-[#0f1119]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-display font-bold">Filters</h3>
+                <button onClick={() => setShowFilters(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase font-black text-white/40 tracking-widest">Urgency</span>
+                  <div className="flex flex-wrap gap-2">
+                    {URGENCY_OPTIONS.map(u => (
+                      <button
+                        key={u}
+                        onClick={() => setUrgencyFilter(urgencyFilter === u ? null : u)}
+                        className={clsx(
+                          "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all",
+                          urgencyFilter === u ? "bg-amber-accent text-slate-900" : "glass text-white/50 hover:text-white/80"
+                        )}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-black text-white/40 tracking-widest">Max Budget</span>
+                    <span className="text-amber-accent font-bold">${maxBudget}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="1000"
+                    step="10"
+                    value={maxBudget}
+                    onChange={(e) => setMaxBudget(parseInt(e.target.value))}
+                    className="w-full accent-amber-accent"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 mt-8">
+                <Button variant="secondary" className="flex-1" onClick={clearFilters}>Clear</Button>
+                <Button className="flex-1" onClick={() => setShowFilters(false)}>Show Results</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Categories */}
       <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
@@ -218,7 +306,7 @@ export const Home: React.FC = () => {
                             className="w-24 h-24 rounded-2xl object-cover ring-2 ring-white/5 shadow-2xl"
                             referrerPolicy="no-referrer"
                         />
-                        {job.urgency === 'URGENT' && (
+                        {job.urgency === 'ASAP' && (
                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-rose-status border-4 border-[#080a12] rounded-full shadow-lg" />
                         )}
                     </div>

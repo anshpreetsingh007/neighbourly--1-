@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard, Button } from '../../components/UI';
 import { MapPin, Search, Filter, Navigation, X, Loader2, MessageSquare, Clock, AlertTriangle } from 'lucide-react';
+import { clsx } from 'clsx';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -61,6 +62,8 @@ export const MapView: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([40.7128, -74.0060]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -79,10 +82,12 @@ export const MapView: React.FC = () => {
     }
   };
 
-  const visibleJobs = jobs.filter(job =>
-    job.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    job.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const visibleJobs = jobs.filter(job => {
+    const matchesSearch = job.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      job.description?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = !activeCategory || job.category === activeCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   useEffect(() => {
     fetchJobs();
@@ -179,14 +184,66 @@ export const MapView: React.FC = () => {
         <div className="pointer-events-auto">
             <Button
               variant="secondary"
-              className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80 opacity-50 cursor-not-allowed"
-              disabled
-              title="Filters are coming soon"
+              className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80 relative"
+              onClick={() => setShowFilters(true)}
             >
             <Filter className="w-6 h-6" />
+            {activeCategory && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">1</span>
+            )}
             </Button>
         </div>
       </div>
+
+      {/* Filter Panel */}
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center"
+            onClick={() => setShowFilters(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full md:max-w-md glass rounded-t-[2.5rem] md:rounded-[2rem] p-8 border border-white/10 bg-[#0f1119]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-display font-bold">Filter by Category</h3>
+                <button onClick={() => setShowFilters(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(CATEGORY_ICONS).map(([id, icon]) => (
+                  <button
+                    key={id}
+                    onClick={() => setActiveCategory(activeCategory === id ? null : id)}
+                    className={clsx(
+                      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all",
+                      activeCategory === id ? "bg-amber-accent text-slate-900" : "glass text-white/50 hover:text-white/80"
+                    )}
+                  >
+                    <span>{icon}</span>
+                    <span className="capitalize">{id}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-4 mt-8">
+                <Button variant="secondary" className="flex-1" onClick={() => setActiveCategory(null)}>Clear</Button>
+                <Button className="flex-1" onClick={() => setShowFilters(false)}>Show Results</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Locate Button */}
       <div className="absolute right-6 bottom-32 flex flex-col gap-3 z-10">

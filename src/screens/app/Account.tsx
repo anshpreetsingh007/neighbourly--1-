@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { GlassCard, Button } from '../../components/UI';
 import axios from 'axios';
@@ -18,6 +19,7 @@ import {
 
 export const Account: React.FC = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -34,16 +36,12 @@ export const Account: React.FC = () => {
   }, [user]);
 
   const menuItems = [
-    { icon: Settings, label: 'Settings', color: 'text-white/50' },
-    { icon: Bell, label: 'Notifications', color: 'text-sky-status' },
-    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent' },
-    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status' },
-    { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50' },
+    { icon: Settings, label: 'Settings', color: 'text-white/50', path: '/account/settings' },
+    { icon: Bell, label: 'Notifications', color: 'text-sky-status', path: '/account/notifications' },
+    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent', path: '/account/payments' },
+    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status', path: '/account/verification' },
+    { icon: Smartphone, label: 'Connected Devices', color: 'text-white/50', path: '/account/devices' },
   ];
-
-  const handleMenuClick = (label: string) => {
-    alert(`${label} isn't available yet. Coming soon.`);
-  };
 
   return (
     <div className="p-6 space-y-8">
@@ -74,16 +72,20 @@ export const Account: React.FC = () => {
 
         <div className="flex gap-4 w-full">
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-amber-accent">4.9</span>
+            <span className="text-2xl font-display font-bold text-amber-accent">
+              {profile?.avg_rating ? profile.avg_rating.toFixed(1) : '—'}
+            </span>
             <div className="flex gap-0.5">
               {[1,2,3,4,5].map(i => <Star key={i} className="w-3 h-3 fill-amber-accent text-amber-accent" />)}
             </div>
-            <span className="text-[10px] font-bold text-white/30 uppercase">Rating</span>
+            <span className="text-[10px] font-bold text-white/30 uppercase">
+              {profile?.reviews_count ? `${profile.reviews_count} Reviews` : 'No Ratings Yet'}
+            </span>
           </GlassCard>
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-sky-status">24</span>
+            <span className="text-2xl font-display font-bold text-sky-status">{profile?.jobs_posted_count ?? 0}</span>
             <Briefcase className="w-4 h-4 text-sky-status" />
-            <span className="text-[10px] font-bold text-white/30 uppercase">Jobs Done</span>
+            <span className="text-[10px] font-bold text-white/30 uppercase">Jobs Posted</span>
           </GlassCard>
         </div>
       </section>
@@ -98,7 +100,7 @@ export const Account: React.FC = () => {
           >
             <button
               type="button"
-              onClick={() => handleMenuClick(item.label)}
+              onClick={() => navigate(item.path)}
               className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
             >
               <div className="flex items-center gap-4">

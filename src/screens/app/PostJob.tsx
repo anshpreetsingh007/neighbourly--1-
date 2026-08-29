@@ -371,25 +371,53 @@ export const PostJob: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Budget Range</label>
-              <div className="glass p-6 rounded-xl space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[0]}</span>
-                  <span className="text-white/30">—</span>
-                  <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[1]}</span>
-                </div>
-                <div className="space-y-6">
+              <div className="glass p-6 rounded-xl space-y-6">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
-                    <span className="text-[10px] uppercase font-black text-white/20 tracking-widest">Maximum Budget</span>
-                    <input 
-                      type="range" 
-                      className="w-full accent-amber-accent"
-                      min="10"
-                      max="1000"
-                      step="10"
-                      value={formData.budget[1]}
-                      onChange={(e) => setFormData({ ...formData, budget: [formData.budget[0], parseInt(e.target.value)] })}
+                    <span className="text-[10px] uppercase font-black text-white/20 tracking-widest">Minimum ($)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={formData.budget[1]}
+                      step={5}
+                      value={formData.budget[0]}
+                      onChange={(e) => {
+                        const value = Math.max(0, Math.min(parseInt(e.target.value) || 0, formData.budget[1]));
+                        setFormData({ ...formData, budget: [value, formData.budget[1]] });
+                      }}
+                      className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
                     />
                   </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] uppercase font-black text-white/20 tracking-widest">Maximum ($)</span>
+                    <input
+                      type="number"
+                      min={formData.budget[0]}
+                      max={5000}
+                      step={5}
+                      value={formData.budget[1]}
+                      onChange={(e) => {
+                        const value = Math.max(formData.budget[0], parseInt(e.target.value) || formData.budget[0]);
+                        setFormData({ ...formData, budget: [formData.budget[0], value] });
+                      }}
+                      className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] uppercase font-black text-white/20 tracking-widest">Maximum Budget</span>
+                  <input
+                    type="range"
+                    className="w-full accent-amber-accent"
+                    min="10"
+                    max="1000"
+                    step="10"
+                    value={formData.budget[1]}
+                    onChange={(e) => {
+                      const value = Math.max(formData.budget[0], parseInt(e.target.value));
+                      setFormData({ ...formData, budget: [formData.budget[0], value] });
+                    }}
+                  />
                 </div>
               </div>
             </div>

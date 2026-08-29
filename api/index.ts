@@ -75,6 +75,24 @@ async function startServer() {
           include: { sender: true }
         });
         chatNamespace.to(conversation_id).emit('receive_message', message);
+
+        // Notify the other participant(s) in the conversation
+        const conversation = await prisma.conversation.findUnique({ where: { id: conversation_id } });
+        if (conversation) {
+          const recipientIds = conversation.participant_ids.split(',').filter(id => id && id !== user.id);
+          for (const recipientId of recipientIds) {
+            const notification = await prisma.notification.create({
+              data: {
+                user_id: recipientId,
+                type: 'MESSAGE',
+                title: `New message from ${user.name || 'a neighbour'}`,
+                body: body.length > 120 ? `${body.slice(0, 120)}...` : body,
+                data: JSON.stringify({ conversation_id })
+              }
+            });
+            notificationNamespace.to(recipientId).emit('notification', notification);
+          }
+        }
       } catch (err) {
         console.error('Failed to save message:', err);
       }
@@ -222,7 +240,18 @@ async function startServer() {
           console.log('Created new user record for synced session:', user.id);
       }
 
-      res.json(user);
+      const [jobs_posted_count, reviews_count, ratingAgg] = await Promise.all([
+        prisma.job.count({ where: { poster_id: user.id } }),
+        prisma.review.count({ where: { reviewee_id: user.id } }),
+        prisma.review.aggregate({ where: { reviewee_id: user.id }, _avg: { rating: true } })
+      ]);
+
+      res.json({
+        ...user,
+        jobs_posted_count,
+        reviews_count,
+        avg_rating: ratingAgg._avg.rating
+      });
     } catch (err) {
       console.error('Failed to fetch/sync user:', err);
       res.status(500).json({ error: 'Failed to fetch user' });
@@ -230,18 +259,19 @@ async function startServer() {
   });
 
   app.post('/api/users/profile', async (req, res) => {
-    const { supabase_uid, email, name, neighbourhood, avatar_url } = req.body;
-    
+    const { supabase_uid, email, name, neighbourhood, avatar_url, bio } = req.body;
+
     try {
       const user = await prisma.user.upsert({
         where: { supabase_uid },
-        update: { name, neighbourhood, avatar_url },
-        create: { 
-          supabase_uid, 
-          email, 
-          name, 
-          neighbourhood, 
-          avatar_url 
+        update: { name, neighbourhood, avatar_url, bio },
+        create: {
+          supabase_uid,
+          email,
+          name,
+          neighbourhood,
+          avatar_url,
+          bio
         },
       });
       res.json(user);
@@ -413,10 +443,55 @@ async function startServer() {
         }
       });
 
+      // Notify the job poster
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: job.poster_id,
+          type: 'APPLICATION',
+          title: 'New applicant',
+          body: `${helper.name || 'Someone'} applied to your job "${job.title}"`,
+          data: JSON.stringify({ job_id, conversation_id: conversation.id })
+        }
+      });
+      notificationNamespace.to(job.poster_id).emit('notification', notification);
+
       res.status(201).json({ application, conversation_id: conversation.id });
     } catch (err: any) {
       console.error('Failed to apply:', err);
       res.status(500).json({ error: err.message || 'Failed to apply' });
+    }
+  });
+
+  // Notifications API
+  app.get('/api/notifications', async (req, res) => {
+    const supabase_uid = req.headers['x-supabase-uid'] as string;
+    if (!supabase_uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+      const user = await prisma.user.findUnique({ where: { supabase_uid } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const notifications = await prisma.notification.findMany({
+        where: { user_id: user.id },
+        orderBy: { created_at: 'desc' }
+      });
+      res.json(notifications);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+      res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', async (req, res) => {
+    try {
+      const notification = await prisma.notification.update({
+        where: { id: req.params.id },
+        data: { read_at: new Date() }
+      });
+      res.json(notification);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+      res.status(500).json({ error: 'Failed to mark notification read' });
     }
   });
 

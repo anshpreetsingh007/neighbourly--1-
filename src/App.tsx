@@ -10,6 +10,9 @@ import { PostJob } from './screens/app/PostJob';
 import { ChatList } from './screens/app/ChatList';
 import { ChatThread } from './screens/app/ChatThread';
 import { Account } from './screens/app/Account';
+import { Settings } from './screens/app/Settings';
+import { Notifications } from './screens/app/Notifications';
+import { NotAvailable } from './screens/app/NotAvailable';
 import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
@@ -80,8 +83,12 @@ export default function App() {
             <Route path="chat" element={<ChatList />} />
             <Route path="chat/:id" element={<ChatThread />} />
             <Route path="account" element={<Account />} />
+            <Route path="account/settings" element={<Settings />} />
+            <Route path="account/notifications" element={<Notifications />} />
+            <Route path="account/payments" element={<NotAvailable />} />
+            <Route path="account/verification" element={<NotAvailable />} />
+            <Route path="account/devices" element={<NotAvailable />} />
             <Route path="profile-setup" element={<ProfileSetup />} />
-            {/* Add more routes here */}
           </Route>
 
 
