@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import { basemapFor } from '../../lib/basemap';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -49,11 +49,25 @@ const JobMarker = ({ job, isSelected, onClick }: { job: any, isSelected: boolean
 };
 
 // Component to handle map center changes
-const MapCenterer = ({ center }: { center: [number, number] }) => {
+/**
+ * `token` exists so that asking to recentre on the SAME coordinates still moves
+ * the map. These dependencies are primitives, so after panning away and pressing
+ * locate again the lat/lng are identical, the effect never re-runs, and the map
+ * stays where it was dragged to. Bumping the token forces the fly-to.
+ */
+const MapCenterer = ({
+  center,
+  zoom,
+  token,
+}: {
+  center: [number, number];
+  zoom?: number;
+  token: number;
+}) => {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, map.getZoom(), { animate: true, duration: 1.5 });
-  }, [center[0], center[1]]); // Specific dependencies
+    map.flyTo(center, zoom ?? map.getZoom(), { animate: true, duration: 1.5 });
+  }, [center[0], center[1], zoom, token]);
   return null;
 };
 
@@ -68,10 +82,16 @@ export const MapView: React.FC = () => {
   const [loadError, setLoadError] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([40.7128, -74.0060]);
+  const [mapZoom, setMapZoom] = useState<number | undefined>(undefined);
+  const [centerToken, setCenterToken] = useState(0);
+  const [isLocating, setIsLocating] = useState(false);
+  const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [applyingTo, setApplyingTo] = useState<any | null>(null);
+  /** True once we have placed the user, so job loading stops overriding it. */
+  const didAutoCenter = useRef(false);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -79,8 +99,11 @@ export const MapView: React.FC = () => {
     try {
       const { data } = await axios.get('/api/jobs');
       setJobs(data);
-      if (data.length > 0 && !selectedJob) {
-          setMapCenter([data[0].lat || 40.7128, data[0].lng || -74.0060]);
+      // Falling back to the newest job only matters when we could not place the
+      // user. Without this guard the two would race and whichever resolved last
+      // would win, so the map would sometimes jump off your location.
+      if (data.length > 0 && !selectedJob && !didAutoCenter.current) {
+          recenter([data[0].lat || 40.7128, data[0].lng || -74.0060]);
       }
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
@@ -99,6 +122,37 @@ export const MapView: React.FC = () => {
 
   useEffect(() => {
     fetchJobs();
+  }, []);
+
+  /**
+   * Centre on the user as soon as the Map opens - a hyperlocal map that opens
+   * on someone else's job is not much use.
+   *
+   * Failures are deliberately silent here. Anyone who has declined the
+   * permission would otherwise get an error toast every single time they opened
+   * this screen, which is nagging; the locate button still explains what went
+   * wrong when they ask for it explicitly. Lower accuracy and a longer cache
+   * window than the button, because this only needs to pick the right
+   * neighbourhood and should not cost a GPS fix on open.
+   */
+  useEffect(() => {
+    if (!navigator.geolocation || didAutoCenter.current) return;
+    // A ref, not state: StrictMode runs this twice in dev and we only want one
+    // position request.
+    didAutoCenter.current = true;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setUserPosition(here);
+        recenter(here, 14);
+      },
+      () => {
+        // Denied or unavailable: leave the map wherever it was going to land.
+        didAutoCenter.current = false;
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
   }, []);
 
   const handleStartChat = async (job: any) => {
@@ -131,15 +185,47 @@ export const MapView: React.FC = () => {
     }
   };
 
+  /** Moves the map, and works even when the target has not changed. */
+  const recenter = (next: [number, number], zoom?: number) => {
+    setMapCenter(next);
+    if (zoom !== undefined) setMapZoom(zoom);
+    setCenterToken(t => t + 1);
+  };
+
   const locateUser = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setMapCenter([pos.coords.latitude, pos.coords.longitude]);
-      }, (err) => {
-        console.warn('Geolocation failed:', err);
-        showToast('Could not get your location. Check your browser permissions.', 'error');
-      });
+    // Previously this failed silently when geolocation was unavailable, gave no
+    // sign it was working during the wait (which can be many seconds), and kept
+    // the current zoom - so landing a few hundred metres away looked like
+    // nothing had happened at all.
+    if (!navigator.geolocation) {
+      showToast('This browser cannot share your location.', 'error');
+      return;
     }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        // No success toast: the map flying to a fresh blue dot already says it
+        // worked. Only failures need explaining.
+        setUserPosition(here);
+        recenter(here, 15);
+        setIsLocating(false);
+      },
+      (err) => {
+        setIsLocating(false);
+        console.warn('Geolocation failed:', err);
+        const message =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location is blocked. Allow it in your browser settings for this site.'
+            : err.code === err.POSITION_UNAVAILABLE
+              ? 'Your location is not available right now.'
+              : 'Finding your location took too long. Please try again.';
+        showToast(message, 'error');
+      },
+      // Without a timeout this can hang indefinitely with the button spinning.
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
   };
 
   return (
@@ -157,7 +243,20 @@ export const MapView: React.FC = () => {
             attribution={basemap.attribution}
             url={basemap.url}
           />
-          <MapCenterer center={mapCenter} />
+          <MapCenterer center={mapCenter} zoom={mapZoom} token={centerToken} />
+
+          {/* Shows where "here" actually is, so a small move is still visible. */}
+          {userPosition && (
+            <Marker
+              position={userPosition}
+              icon={L.divIcon({
+                className: "",
+                html: '<div style="width:16px;height:16px;border-radius:9999px;background:#0ea5e9;border:3px solid #fff;box-shadow:0 0 0 4px rgba(14,165,233,0.3)"></div>',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+              })}
+            />
+          )}
           
           {!isLoading && visibleJobs.map((job) => (
             <JobMarker 
@@ -166,7 +265,7 @@ export const MapView: React.FC = () => {
               isSelected={selectedJob?.id === job.id}
               onClick={() => {
                 setSelectedJob(job);
-                setMapCenter([job.lat || 40.7128, job.lng || -74.0060]);
+                recenter([job.lat || 40.7128, job.lng || -74.0060]);
               }}
             />
           ))}
@@ -254,10 +353,15 @@ export const MapView: React.FC = () => {
       <div className="absolute right-6 bottom-32 flex flex-col gap-3 z-10">
         <button
             onClick={locateUser}
+            disabled={isLocating}
             aria-label="Centre map on my location"
-            className="p-5 glass rounded-2xl shadow-2xl border border-hairline bg-surface-1 active:scale-90 transition-all hover:bg-surface-2"
+            className="p-5 glass rounded-2xl shadow-2xl border border-hairline bg-surface-1 active:scale-90 transition-all hover:bg-surface-2 disabled:opacity-60"
         >
-          <Navigation className="w-6 h-6 text-amber-accent" />
+          {isLocating ? (
+            <Loader2 className="w-6 h-6 text-amber-accent animate-spin" />
+          ) : (
+            <Navigation className="w-6 h-6 text-amber-accent" />
+          )}
         </button>
       </div>
 
