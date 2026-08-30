@@ -53,6 +53,7 @@ export const JobDetail: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   const loadJob = useCallback(async () => {
     setIsLoading(true);
@@ -165,7 +166,7 @@ export const JobDetail: React.FC = () => {
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-3xl font-display font-bold leading-tight">{job.title}</h2>
-            <span className="shrink-0 bg-amber-accent/15 border border-amber-accent/30 text-amber-accent font-display font-bold px-4 py-2 rounded-2xl">
+            <span className="shrink-0 text-muted font-display font-bold text-2xl">
               ${job.budget_min}–${job.budget_max}
             </span>
           </div>
@@ -206,7 +207,25 @@ export const JobDetail: React.FC = () => {
 
         {job.description && (
           <div className="glass rounded-3xl border border-hairline p-5">
-            <p className="text-body leading-relaxed whitespace-pre-wrap">{job.description}</p>
+            {/* Collapsed by default so a long description cannot push the
+                Apply button off the bottom of the screen. */}
+            <p
+              className={clsx(
+                'text-body leading-relaxed whitespace-pre-wrap',
+                !showFullDescription && 'line-clamp-6'
+              )}
+            >
+              {job.description}
+            </p>
+            {job.description.length > 280 && (
+              <button
+                type="button"
+                onClick={() => setShowFullDescription(v => !v)}
+                className="mt-3 text-xs font-bold uppercase tracking-widest text-amber-accent hover:opacity-80 transition-opacity"
+              >
+                {showFullDescription ? 'Show less' : 'Read more'}
+              </button>
+            )}
           </div>
         )}
 
@@ -219,8 +238,11 @@ export const JobDetail: React.FC = () => {
           />
           <div className="min-w-0 flex-1">
             <p className="font-bold truncate">{job.poster?.name || 'Neighbour'}</p>
+            {/* Was the poster's "neighbourhood", which people fill in with their
+                street address. Member-since is a trust signal that gives away
+                nothing. */}
             <p className="text-muted text-xs font-medium truncate">
-              {job.poster?.neighbourhood || 'Neighbourhood not set'}
+              Member since {new Date(job.poster?.created_at ?? Date.now()).getFullYear()}
             </p>
           </div>
           {job.poster?.is_id_verified && (

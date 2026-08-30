@@ -21,6 +21,15 @@ const URGENCY_FROM_API: Record<string, string> = {
   ASAP: 'ASAP',
 };
 
+/**
+ * Caps on free text. Without them a single post can carry an unbounded blob,
+ * which ships in every /api/jobs response and slows the feed for everyone -
+ * the card clamps it visually, but the payload is still there. Mirrored in
+ * POST and PATCH /api/jobs, since a client-side limit is only a suggestion.
+ */
+const TITLE_MAX = 80;
+const DESCRIPTION_MAX = 1000;
+
 const MapPreview = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
@@ -345,6 +354,7 @@ export const PostJob: React.FC = () => {
                 type="text"
                 value={formData.title}
                 onChange={e => setFormData({ ...formData, title: e.target.value })}
+                maxLength={TITLE_MAX}
                 className="w-full glass rounded-xl py-4 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-strong"
                 placeholder="What do you need help with?"
               />
@@ -401,9 +411,17 @@ export const PostJob: React.FC = () => {
               <textarea
                 value={formData.description}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
+                maxLength={DESCRIPTION_MAX}
                 className="w-full glass rounded-xl py-4 px-4 h-32 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-strong"
                 placeholder="Describe the job in detail..."
               />
+              {/* Shown near the limit only - a permanent counter is noise when
+                  you are 900 characters away from it. */}
+              {formData.description.length > DESCRIPTION_MAX - 100 && (
+                <p className="text-[11px] font-bold uppercase tracking-widest text-muted text-right">
+                  {DESCRIPTION_MAX - formData.description.length} characters left
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

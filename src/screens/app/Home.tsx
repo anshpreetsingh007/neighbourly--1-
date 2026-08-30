@@ -46,9 +46,11 @@ export const Home: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [tab, setTab] = useState<'nearby' | 'mine'>('nearby');
+  const [tab, setTab] = useState<'nearby' | 'mine' | 'applied'>('nearby');
   const [myJobs, setMyJobs] = useState<any[] | null>(null);
   const [isLoadingMine, setIsLoadingMine] = useState(false);
+  const [appliedJobs, setAppliedJobs] = useState<any[] | null>(null);
+  const [isLoadingApplied, setIsLoadingApplied] = useState(false);
   const [applyingTo, setApplyingTo] = useState<any | null>(null);
   const [deletingJob, setDeletingJob] = useState<any | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: 'success' | 'warn' } | null>(null);
@@ -127,6 +129,20 @@ export const Home: React.FC = () => {
       .finally(() => setIsLoadingMine(false));
   }, [tab, myJobs, isLoadingMine]);
 
+  // Same lazy pattern as Your Listings - most visits never open this tab.
+  useEffect(() => {
+    if (tab !== 'applied' || appliedJobs !== null || isLoadingApplied) return;
+    setIsLoadingApplied(true);
+    axios
+      .get('/api/jobs/applied')
+      .then(({ data }) => setAppliedJobs(data))
+      .catch(err => {
+        console.error('Failed to load your applications:', err);
+        setAppliedJobs([]);
+      })
+      .finally(() => setIsLoadingApplied(false));
+  }, [tab, appliedJobs, isLoadingApplied]);
+
   const handleDeleteJob = async (job: any) => {
     try {
       const { data } = await axios.delete(`/api/jobs/${job.id}`);
@@ -172,6 +188,18 @@ export const Home: React.FC = () => {
     showNotice('Application sent. You can follow it up in Chat.', 'success');
   };
 
+  /**
+   * ASAP first, then This Week, then Flexible - the whole point of setting an
+   * urgency is that it changes who sees the job soonest. Ties fall back to
+   * newest first, which is the order the API already returns.
+   */
+  const URGENCY_RANK: Record<string, number> = { ASAP: 0, 'THIS WEEK': 1, FLEXIBLE: 2 };
+  const byUrgencyThenNewest = (a: any, b: any) => {
+    const rank = (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3);
+    if (rank !== 0) return rank;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  };
+
   const filteredJobs = jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -179,7 +207,7 @@ export const Home: React.FC = () => {
     const matchesUrgency = !urgencyFilter || job.urgency === urgencyFilter;
     const matchesBudget = (job.budget_min ?? 0) <= maxBudget;
     return matchesSearch && matchesCategory && matchesUrgency && matchesBudget;
-  });
+  }).sort(byUrgencyThenNewest);
 
   const activeFilterCount = (urgencyFilter ? 1 : 0) + (maxBudget < 1000 ? 1 : 0);
 
@@ -188,9 +216,6 @@ export const Home: React.FC = () => {
     setMaxBudget(1000);
   };
 
-  // Matches what PostJob actually writes (FLEXIBLE / THIS WEEK / ASAP) - not
-  // URGENT/EMERGENCY, which nothing in this app ever produces.
-  const urgentJobs = jobs.filter(job => job.urgency === 'ASAP');
 
   return (
     <div className="p-6 md:p-10 space-y-10">
@@ -360,8 +385,11 @@ export const Home: React.FC = () => {
       <section className="space-y-6">
         <div className="flex items-center gap-6 px-2 border-b border-hairline">
           {([
-            ['nearby', 'Nearby Jobs'],
-            ['mine', 'Your Listings'],
+            // Short labels: "Your Listings" does not survive a third sibling on
+            // a phone-width tab bar.
+            ['nearby', 'Nearby'],
+            ['mine', 'Posted'],
+            ['applied', 'Applied'],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -382,7 +410,100 @@ export const Home: React.FC = () => {
           ))}
         </div>
 
-        {tab === 'mine' ? (
+        {tab === 'applied' ? (
+          isLoadingApplied || appliedJobs === null ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
+              <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
+              <p className="text-[10px] font-black tracking-[0.2em] uppercase">Loading your applications...</p>
+            </div>
+          ) : appliedJobs.length === 0 ? (
+            <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-hairline space-y-3">
+              <p className="text-faint font-black tracking-widest uppercase text-sm">No applications yet</p>
+              <p className="text-[10px] text-faint uppercase tracking-tight">
+                Apply to a nearby job and it will show up here
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Hired first: that is the one you came here to find, and the
+                  only one whose exact address is now visible to you. */}
+              {[...appliedJobs]
+                .sort((a, b) => {
+                  const rank = (j: any) =>
+                    myApplication(j)?.status === 'ACCEPTED' ? 0
+                      : myApplication(j)?.status === 'REJECTED' ? 2 : 1;
+                  return rank(a) - rank(b);
+                })
+                .map(job => {
+                  const application = myApplication(job);
+                  const hired = application?.status === 'ACCEPTED';
+                  const declined = application?.status === 'REJECTED';
+                  return (
+                    <GlassCard
+                      key={job.id}
+                      hover
+                      className={clsx(
+                        'p-5 space-y-3 border bg-surface-1',
+                        hired ? 'border-emerald-status/40' : 'border-hairline',
+                        declined && 'opacity-60'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/jobs/${job.id}`)}
+                        className="w-full flex items-start gap-4 text-left"
+                      >
+                        <JobThumbnail
+                          photoUrl={job.photos?.[0]?.url}
+                          category={job.category}
+                          alt={job.title}
+                          className="w-16 h-16 rounded-2xl shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-lg leading-tight truncate">{job.title}</h4>
+                          <p className="text-muted text-[10px] font-bold uppercase tracking-widest mt-1 truncate">
+                            {jobProximity(job)} · {relativeTime(job.created_at)}
+                          </p>
+                          {hired && job.address && (
+                            <p className="text-emerald-status text-xs font-bold mt-2 flex items-start gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                              {job.address}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={clsx(
+                            'shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border',
+                            hired
+                              ? 'bg-emerald-status/15 border-emerald-status/40 text-emerald-status'
+                              : declined
+                                ? 'bg-surface-2 border-hairline text-faint'
+                                : 'bg-amber-accent/15 border-amber-accent/30 text-amber-accent'
+                          )}
+                        >
+                          {hired ? 'Hired' : declined ? 'Not chosen' : 'Pending'}
+                        </span>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-hairline">
+                        <span className="text-muted text-xs font-bold">
+                          Your price · ${application?.proposed_price}
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-xl text-xs"
+                          onClick={() => handleStartChat(job)}
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" /> Message
+                        </Button>
+                      </div>
+                    </GlassCard>
+                  );
+                })}
+            </div>
+          )
+        ) : tab === 'mine' ? (
           isLoadingMine || myJobs === null ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
               <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
@@ -502,14 +623,16 @@ export const Home: React.FC = () => {
                   </div>
 
                   <div className="flex-1 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <h4 className="font-bold text-xl leading-tight tracking-tight">{job.title}</h4>
-                      <span className="text-amber-accent font-black text-xs bg-amber-accent/10 px-2 py-1 rounded-lg tracking-tighter">
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-bold text-xl leading-tight tracking-tight line-clamp-2">
+                        {job.title}
+                      </h4>
+                      <span className="shrink-0 text-muted font-black text-xs tracking-tighter">
                         ${job.budget_min} - ${job.budget_max}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-4 text-[10px] text-muted font-bold uppercase tracking-wider">
+                    <div className="flex items-center flex-wrap gap-x-4 gap-y-2 text-[10px] text-muted font-bold uppercase tracking-wider">
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-amber-accent" />
                         {jobProximity(job)}
@@ -521,6 +644,19 @@ export const Home: React.FC = () => {
                     </div>
 
                     <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
+
+                    {/* A label rather than a bare dot: a red circle told nobody
+                        what it meant, and colour alone is invisible to screen
+                        readers and hard for colour-blind users. Sits here rather
+                        than in the button row, where it squeezed "Applied $50"
+                        onto two lines. */}
+                    {job.urgency === 'ASAP' && (
+                      <div className="flex justify-end">
+                        <span className="bg-rose-status/15 border border-rose-status/40 text-rose-status text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg">
+                          ASAP
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -550,40 +686,6 @@ export const Home: React.FC = () => {
         )}
       </section>
 
-      {/* Urgent Jobs Section Refined */}
-      {tab === 'nearby' && urgentJobs.length > 0 && (
-        <section className="space-y-6">
-          <h3 className="text-2xl font-display font-bold tracking-tight px-2">Urgent Gigs</h3>
-          <div className="grid md:grid-cols-2 gap-6">
-            {urgentJobs.map(job => (
-              <GlassCard key={job.id} className="bg-rose-status/[0.07] border-rose-status/20 p-8 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-rose-status/10 blur-[60px] rounded-full pointer-events-none group-hover:bg-rose-status/20 transition-all" />
-                <div className="flex justify-between items-start mb-6">
-                  <span className="bg-rose-status text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-rose-500/20">Emergency</span>
-                  <span className="text-3xl font-display font-bold text-amber-accent tracking-tighter">${job.budget_min}+</span>
-                </div>
-                <h4 className="text-2xl font-bold mb-3 tracking-tight">{job.title}</h4>
-                <p className="text-muted text-sm mb-8 leading-relaxed line-clamp-2">{job.description}</p>
-                <div className="flex gap-4">
-                  <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-surface-1 border border-hairline" onClick={() => handleStartChat(job)}>
-                    <MessageSquare className="w-5 h-5" />
-                  </Button>
-                  {myApplication(job) ? (
-                    <div className="flex-[3] flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest">
-                      <Check className="w-4 h-4" />
-                      Applied · ${myApplication(job).proposed_price}
-                    </div>
-                  ) : (
-                    <Button className="flex-[3] bg-rose-status hover:bg-rose-600 shadow-xl shadow-rose-500/20 rounded-xl font-black uppercase tracking-widest text-xs py-4" onClick={() => setApplyingTo(job)}>
-                      Instant Apply
-                    </Button>
-                  )}
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        </section>
-      )}
 
       {deletingJob && (
         <ConfirmDialog

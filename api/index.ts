@@ -103,7 +103,12 @@ const PUBLIC_USER_SELECT = {
   name: true,
   avatar_url: true,
   bio: true,
-  neighbourhood: true,
+  // neighbourhood is deliberately NOT here. The field is labelled
+  // "Neighbourhood" but people type their full street address into it, and
+  // several already have. Publishing it undid the whole point of blurring job
+  // locations: the pin was approximate while the poster's profile gave away
+  // the exact house. Own-profile reads go through /api/users/me, which returns
+  // the full row, so editing it still works.
   is_id_verified: true,
   created_at: true,
 } as const;
@@ -243,6 +248,24 @@ function jobForViewer(job: any, viewerId: string) {
     lng: job.lng + stableUnit(job.id + 'lng') * RADIUS_DEG,
     location_precision: 'approximate',
   };
+}
+
+/**
+ * Caps on free text, mirroring the maxLength on the Post a Job form.
+ *
+ * The client limit is only a suggestion - curl ignores it - and an unbounded
+ * description is not just an ugly card: it ships in every /api/jobs response,
+ * so one abusive post slows the feed for every user.
+ */
+const TITLE_MAX = 80;
+const DESCRIPTION_MAX = 1000;
+const ADDRESS_MAX = 300;
+
+/** Returns an error message if a field is over its cap, otherwise null. */
+function tooLong(value: unknown, max: number, label: string) {
+  return typeof value === 'string' && value.length > max
+    ? `${label} must be ${max} characters or fewer`
+    : null;
 }
 
 /** True only if userId is an exact member of the conversation's participant list. */
@@ -456,6 +479,12 @@ async function startServer() {
       return res.status(400).json({ error: 'A location is required' });
     }
 
+    const lengthError =
+      tooLong(title, TITLE_MAX, 'The title') ??
+      tooLong(description, DESCRIPTION_MAX, 'The description') ??
+      tooLong(address, ADDRESS_MAX, 'The address');
+    if (lengthError) return res.status(400).json({ error: lengthError });
+
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
       const user = currentUser(req);
@@ -491,6 +520,36 @@ async function startServer() {
 
   // Declared before '/api/jobs/:id' on purpose - otherwise Express matches
   // this path with id === 'mine'.
+  /**
+   * Jobs you have applied to - the helper's mirror of /api/jobs/mine.
+   *
+   * This exists because the browse feed only lists OPEN jobs that are not
+   * yours, so the moment you are hired the job disappears from it: the one
+   * listing that matters most to you becomes the one you cannot find. Includes
+   * every status, so declined and assigned work stays visible too.
+   *
+   * Runs through jobForViewer, which is what reveals the exact address once
+   * your application is ACCEPTED.
+   */
+  app.get('/api/jobs/applied', requireAuth, async (req, res) => {
+    try {
+      const me = currentUser(req);
+      const jobs = await prisma.job.findMany({
+        where: { applications: { some: { helper_id: me.id } } },
+        include: {
+          poster: { select: PUBLIC_USER_SELECT },
+          photos: true,
+          applications: true,
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      res.json(jobs.map(job => jobForViewer(job, me.id)));
+    } catch (err) {
+      console.error('Failed to fetch applied jobs:', err);
+      res.status(500).json({ error: 'Failed to fetch your applications' });
+    }
+  });
+
   app.get('/api/jobs/mine', requireAuth, async (req, res) => {
     try {
       const me = currentUser(req);
@@ -548,6 +607,13 @@ async function startServer() {
       }
 
       const { title, description, category, urgency, photos } = req.body;
+
+      const lengthError =
+        tooLong(title, TITLE_MAX, 'The title') ??
+        tooLong(description, DESCRIPTION_MAX, 'The description') ??
+        tooLong(req.body.address, ADDRESS_MAX, 'The address');
+      if (lengthError) return res.status(400).json({ error: lengthError });
+
       const data: Record<string, unknown> = {};
 
       if (typeof title === 'string') {

@@ -189,9 +189,12 @@ export const Settings: React.FC = () => {
                   value={neighbourhood}
                   onChange={(e) => setNeighbourhood(e.target.value)}
                   className="w-full glass rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
-                  placeholder="e.g. Downtown, Brooklyn"
+                  placeholder="e.g. Cornerstone, Calgary"
                 />
               </div>
+              <p className="text-[11px] text-faint ml-1">
+                The general area only — not your street address.
+              </p>
             </div>
 
             <div className="space-y-2">
