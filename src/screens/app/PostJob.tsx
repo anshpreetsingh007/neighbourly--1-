@@ -13,6 +13,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { saveJobDraft, loadJobDraft, clearJobDraft } from '../../lib/jobDraft';
 import L from 'leaflet';
 import { CATEGORIES } from '../../lib/categories';
+import { BUDGET_MAX } from '../../lib/money';
 
 /** Stored form -> the labels the urgency buttons render and compare against. */
 const URGENCY_FROM_API: Record<string, string> = {
@@ -72,7 +73,7 @@ export const PostJob: React.FC = () => {
       urgency: 'Flexible',
       photos: [] as string[],
       location: '',
-      budget: [50, 200],
+      budget: [0, 200],
     }
   );
 
@@ -122,7 +123,7 @@ export const PostJob: React.FC = () => {
       urgency: 'Flexible',
       photos: [],
       location: '',
-      budget: [50, 200],
+      budget: [0, 200],
     });
     setCoords([40.7128, -74.0060]);
     setLocationConfirmed(false);
@@ -149,7 +150,7 @@ export const PostJob: React.FC = () => {
           urgency: URGENCY_FROM_API[data.urgency] ?? 'Flexible',
           photos: (data.photos ?? []).map((p: any) => p.url),
           location: data.address ?? '',
-          budget: [data.budget_min ?? 50, data.budget_max ?? 200],
+          budget: [data.budget_min ?? 0, data.budget_max ?? 200],
         });
         setCoords([data.lat, data.lng]);
         // It came from the database, so it was geocoded when it was posted.
@@ -430,7 +431,7 @@ export const PostJob: React.FC = () => {
                 {formData.photos.map((url, index) => (
                   <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-hairline">
                     <img src={url} alt="Job" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <button 
+                    <button
                       onClick={() => setFormData(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))}
                       className="absolute top-1 right-1 bg-rose-status p-1 rounded-lg shadow-lg"
                     >
@@ -438,7 +439,7 @@ export const PostJob: React.FC = () => {
                     </button>
                   </div>
                 ))}
-                
+
                 {formData.photos.length < 6 && (
                   <label className="aspect-square glass rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed border-hairline hover:border-amber-accent/50 transition-all cursor-pointer">
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
@@ -527,9 +528,9 @@ export const PostJob: React.FC = () => {
               </AnimatePresence>
 
               <div className="h-48 rounded-2xl overflow-hidden border border-hairline glass">
-                <MapContainer 
-                  center={coords} 
-                  zoom={15} 
+                <MapContainer
+                  center={coords}
+                  zoom={15}
                   style={{ height: '100%', width: '100%' }}
                   zoomControl={false}
                 >
@@ -543,7 +544,7 @@ export const PostJob: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-bold text-body uppercase tracking-wider">Budget Range</label>
-              <div className="glass p-6 rounded-xl space-y-6">
+              <div className="glass p-6 rounded-xl">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <span className="text-[10px] uppercase font-black text-faint tracking-widest">Minimum ($)</span>
@@ -554,7 +555,7 @@ export const PostJob: React.FC = () => {
                       step={5}
                       value={formData.budget[0]}
                       onChange={(e) => {
-                        const value = Math.max(0, Math.min(parseInt(e.target.value) || 0, formData.budget[1]));
+                        const value = Math.max(0, Math.min(parseInt(e.target.value) || 0, formData.budget[1], BUDGET_MAX));
                         setFormData({ ...formData, budget: [value, formData.budget[1]] });
                       }}
                       className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
@@ -565,31 +566,19 @@ export const PostJob: React.FC = () => {
                     <input
                       type="number"
                       min={formData.budget[0]}
-                      max={5000}
+                      max={BUDGET_MAX}
                       step={5}
                       value={formData.budget[1]}
                       onChange={(e) => {
-                        const value = Math.max(formData.budget[0], parseInt(e.target.value) || formData.budget[0]);
+                        // The `max` attribute is advisory only - a typed value goes straight
+                        // into state, which is how $1e+29 got posted.
+                        const typed = parseInt(e.target.value) || formData.budget[0];
+                        const value = Math.min(Math.max(formData.budget[0], typed), BUDGET_MAX);
                         setFormData({ ...formData, budget: [formData.budget[0], value] });
                       }}
                       className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
                     />
                   </div>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] uppercase font-black text-faint tracking-widest">Maximum Budget</span>
-                  <input
-                    type="range"
-                    className="w-full accent-amber-accent"
-                    min="10"
-                    max="1000"
-                    step="10"
-                    value={formData.budget[1]}
-                    onChange={(e) => {
-                      const value = Math.max(formData.budget[0], parseInt(e.target.value));
-                      setFormData({ ...formData, budget: [formData.budget[0], value] });
-                    }}
-                  />
                 </div>
               </div>
             </div>
@@ -667,12 +656,12 @@ export const PostJob: React.FC = () => {
       {step < 4 && (
         <div className="flex gap-2 mb-8">
           {[1, 2, 3].map(s => (
-            <div 
-              key={s} 
+            <div
+              key={s}
               className={clsx(
                 "h-1.5 flex-1 rounded-full transition-all duration-500",
                 s <= step ? "bg-amber-accent" : "bg-surface-2"
-              )} 
+              )}
             />
           ))}
         </div>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import axios from 'axios';
+import { formatMoney } from '../../lib/money';
 import { formatDistanceToNow } from 'date-fns';
 import { clsx } from 'clsx';
 import {
@@ -204,7 +205,7 @@ export const MyJobs: React.FC = () => {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="font-display font-bold text-amber-accent text-lg">
-                              ${application.proposed_price}
+                              {formatMoney(application.proposed_price)}
                             </p>
                             <span
                               className={clsx(
@@ -261,7 +262,7 @@ export const MyJobs: React.FC = () => {
       {pendingHire && (
         <ConfirmDialog
           title={`Hire ${pendingHire.application.helper?.name || 'this neighbour'}?`}
-          body={`They'll be paid $${pendingHire.application.proposed_price}. Everyone else who applied will be declined, and this person will be shown the exact address.`}
+          body={`They'll be paid ${formatMoney(pendingHire.application.proposed_price)}. Everyone else who applied will be declined, and this person will be shown the exact address.`}
           confirmLabel="Hire them"
           onCancel={() => setPendingHire(null)}
           onConfirm={() => handleAccept(pendingHire.jobId, pendingHire.application)}

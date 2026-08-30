@@ -25,6 +25,7 @@ export const Layout: React.FC = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const socket = useSocket('notifications');
 
   useEffect(() => {
@@ -37,13 +38,31 @@ export const Layout: React.FC = () => {
     if (!socket) return;
     socket.on('notification', (notification: any) => {
       setNotifications(prev => [notification, ...prev]);
+      // A message that arrives while you are looking at something else lights
+      // the dot immediately, without waiting for the next refetch.
+      if (notification?.type === 'MESSAGE') setUnreadMessages(prev => prev + 1);
     });
     return () => { socket.off('notification'); };
   }, [socket]);
 
-  // Real unread state, not a permanent decoration: the chat dot only lights up
-  // when there is an actual unread message notification, same for account.
-  const hasUnreadMessages = notifications.some(n => n.type === 'MESSAGE' && !n.read_at);
+  /**
+   * The chat dot used to read `notifications.some(n => n.type === 'MESSAGE')`,
+   * which never cleared: opening a thread marks the *messages* read, and the
+   * notification row stays unread forever. Count the messages themselves.
+   *
+   * Refetched on every navigation, which is what clears the dot on the way out
+   * of a thread - ChatThread emits mark_read on open, so by the time you are
+   * back on another screen the server count has already dropped.
+   */
+  useEffect(() => {
+    if (!user) return;
+    axios
+      .get('/api/messages/unread-count')
+      .then(({ data }) => setUnreadMessages(data.count ?? 0))
+      .catch(() => {});
+  }, [user, location.pathname]);
+
+  const hasUnreadMessages = unreadMessages > 0;
   const hasUnreadOther = notifications.some(n => n.type !== 'MESSAGE' && !n.read_at);
 
   const navItems = [

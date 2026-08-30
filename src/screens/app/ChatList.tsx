@@ -7,6 +7,7 @@ import { Avatar } from '../../components/Avatar';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
+import { clsx } from 'clsx';
 
 export const ChatList: React.FC = () => {
   const navigate = useNavigate();
@@ -34,6 +35,16 @@ export const ChatList: React.FC = () => {
   useEffect(() => {
     fetchConversations();
   }, [user]);
+
+  /**
+   * Clear the badge the instant the row is tapped. ChatThread emits mark_read
+   * on open so the server agrees a moment later, but waiting for that leaves
+   * the dot sitting there through the navigation.
+   */
+  const markRead = (id: string) =>
+    setConversations(prev =>
+      prev.map(c => (c.id === id ? { ...c, unread_count: 0 } : c))
+    );
 
   const filteredConversations = conversations.filter(conv => 
     conv.otherUser?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -64,7 +75,7 @@ export const ChatList: React.FC = () => {
             <p className="text-sm font-bold uppercase tracking-widest">Loading Chats...</p>
           </div>
         ) : loadError ? (
-          <div className="text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
+          <div className="flex flex-col items-center text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
             <AlertTriangle className="w-8 h-8 text-rose-status mx-auto" />
             <p className="text-muted font-bold uppercase tracking-widest text-sm">Couldn't load conversations</p>
             <Button variant="secondary" size="sm" onClick={fetchConversations}>Retry</Button>
@@ -73,6 +84,7 @@ export const ChatList: React.FC = () => {
           filteredConversations.map((chat) => {
             try {
               const lastMessage = chat.messages?.[0];
+              const isUnread = (chat.unread_count ?? 0) > 0;
               const timeStr = lastMessage?.created_at 
                 ? formatDistanceToNow(new Date(lastMessage.created_at), { addSuffix: true }) 
                 : '';
@@ -81,11 +93,15 @@ export const ChatList: React.FC = () => {
                 <Link
                   to={`/chat/${chat.id}`}
                   key={chat.id}
+                  onClick={() => markRead(chat.id)}
                   className="block group no-underline"
                 >
                   <GlassCard 
                     hover 
-                    className="p-4 flex items-center gap-4 cursor-pointer border border-hairline active:scale-98 transition-all group-hover:bg-surface-1"
+                    className={clsx(
+                      'p-4 flex items-center gap-4 cursor-pointer border active:scale-98 transition-all group-hover:bg-surface-1',
+                      isUnread ? 'border-amber-accent/40 bg-surface-1' : 'border-hairline'
+                    )}
                   >
                     <div className="relative">
                       <Avatar
@@ -98,12 +114,21 @@ export const ChatList: React.FC = () => {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center mb-1">
-                        <h4 className="font-bold truncate text-lg group-hover:text-amber-accent transition-colors">{chat.otherUser?.name || 'Neighbour'}</h4>
-                        <span className="text-[10px] text-faint font-bold uppercase tracking-tighter">
+                        <h4 className={clsx(
+                          'truncate text-lg group-hover:text-amber-accent transition-colors',
+                          isUnread ? 'font-black text-strong' : 'font-bold'
+                        )}>{chat.otherUser?.name || 'Neighbour'}</h4>
+                        <span className={clsx(
+                          'text-[10px] font-bold uppercase tracking-tighter',
+                          isUnread ? 'text-amber-accent' : 'text-faint'
+                        )}>
                           {timeStr}
                         </span>
                       </div>
-                      <p className="text-sm text-muted truncate pr-4 font-medium italic">
+                      <p className={clsx(
+                        'text-sm truncate pr-4',
+                        isUnread ? 'text-body font-bold' : 'text-muted font-medium italic'
+                      )}>
                         {lastMessage?.body || 'No messages yet... Start the conversation!'}
                       </p>
                       {chat.job && (
@@ -115,7 +140,13 @@ export const ChatList: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      <ChevronRight className="w-5 h-5 text-faint group-hover:text-amber-accent transition-all group-hover:translate-x-1" />
+                      {isUnread ? (
+                        <span className="min-w-[22px] h-[22px] px-1.5 flex items-center justify-center rounded-full bg-amber-accent text-slate-900 text-[11px] font-black">
+                          {chat.unread_count > 9 ? '9+' : chat.unread_count}
+                        </span>
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-faint group-hover:text-amber-accent transition-all group-hover:translate-x-1" />
+                      )}
                     </div>
                   </GlassCard>
                 </Link>

@@ -261,6 +261,37 @@ const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 1000;
 const ADDRESS_MAX = 300;
 
+/**
+ * A job budget is a neighbourhood odd-job price, not a number people should be
+ * able to make arbitrarily large. Without a ceiling someone types enough zeroes
+ * that Float renders as 1e+29, which overflows every card and detail header.
+ * $900,000 is the agreed ceiling - high enough never to block a real job,
+ * low enough that the figure still fits a card without going exponential.
+ */
+const BUDGET_MAX = 900000;
+
+/**
+ * Parses and range-checks a budget pair. Returns the numbers or an error string;
+ * never returns a silent default, because `parseFloat(x) || 0` used to turn
+ * garbage into a free job.
+ */
+function parseBudget(rawMin: unknown, rawMax: unknown):
+  | { min: number; max: number; error?: undefined }
+  | { error: string; min?: undefined; max?: undefined } {
+  const min = parseFloat(String(rawMin));
+  const max = parseFloat(String(rawMax));
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return { error: 'Enter a valid budget range' };
+  }
+  if (min < 0 || max < 0) return { error: 'A budget cannot be negative' };
+  if (max < min) return { error: 'The maximum budget must be at least the minimum' };
+  if (max > BUDGET_MAX) {
+    return { error: `A budget cannot be more than $${BUDGET_MAX.toLocaleString('en-US')}` };
+  }
+  // Fractions of a cent are noise on a board priced in whole dollars.
+  return { min: Math.round(min * 100) / 100, max: Math.round(max * 100) / 100 };
+}
+
 /** Returns an error message if a field is over its cap, otherwise null. */
 function tooLong(value: unknown, max: number, label: string) {
   return typeof value === 'string' && value.length > max
@@ -485,6 +516,9 @@ async function startServer() {
       tooLong(address, ADDRESS_MAX, 'The address');
     if (lengthError) return res.status(400).json({ error: lengthError });
 
+    const budget = parseBudget(budget_min, budget_max);
+    if (budget.error) return res.status(400).json({ error: budget.error });
+
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
       const user = currentUser(req);
@@ -499,8 +533,8 @@ async function startServer() {
           lat: latitude,
           lng: longitude,
           address,
-          budget_min: parseFloat(budget_min) || 0,
-          budget_max: parseFloat(budget_max) || 0,
+          budget_min: budget.min,
+          budget_max: budget.max,
           photos: {
             create: (photos || []).map((url: string, index: number) => ({
               url,
@@ -636,13 +670,10 @@ async function startServer() {
       }
 
       if (wantsBudget) {
-        const min = parseFloat(req.body.budget_min);
-        const max = parseFloat(req.body.budget_max);
-        if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min) {
-          return res.status(400).json({ error: 'Enter a valid budget range' });
-        }
-        data.budget_min = min;
-        data.budget_max = max;
+        const budget = parseBudget(req.body.budget_min, req.body.budget_max);
+        if (budget.error) return res.status(400).json({ error: budget.error });
+        data.budget_min = budget.min;
+        data.budget_max = budget.max;
       }
 
       if (wantsMove) {
@@ -951,6 +982,21 @@ async function startServer() {
         conv.participant_ids.split(',').includes(user.id)
       );
 
+      // One grouped query for every conversation rather than a count per row.
+      // Unread means: sent by the other person and never marked read.
+      const unreadGroups = await prisma.message.groupBy({
+        by: ['conversation_id'],
+        where: {
+          conversation_id: { in: conversations.map(c => c.id) },
+          sender_id: { not: user.id },
+          read_at: null,
+        },
+        _count: { _all: true },
+      });
+      const unreadByConversation = new Map(
+        unreadGroups.map(g => [g.conversation_id, g._count._all])
+      );
+
       // Fetch participants for each conversation manually since they are stored as a string
       const conversationsWithParticipants = await Promise.all(conversations.map(async (conv) => {
         const pIds = conv.participant_ids.split(',');
@@ -958,13 +1004,49 @@ async function startServer() {
         const otherUser = otherId
           ? await prisma.user.findUnique({ where: { id: otherId }, select: PUBLIC_USER_SELECT })
           : null;
-        return { ...conv, otherUser };
+        return { ...conv, otherUser, unread_count: unreadByConversation.get(conv.id) ?? 0 };
       }));
+
+      // Newest activity first, so a conversation someone just replied to rises
+      // to the top of the list. Conversations with no messages sort by when
+      // they were opened.
+      conversationsWithParticipants.sort((a, b) => {
+        const at = new Date(a.messages[0]?.created_at ?? a.created_at).getTime();
+        const bt = new Date(b.messages[0]?.created_at ?? b.created_at).getTime();
+        return bt - at;
+      });
 
       res.json(conversationsWithParticipants);
     } catch (err) {
       console.error('Failed to fetch conversations:', err);
       res.status(500).json({ error: 'Failed to fetch conversations' });
+    }
+  });
+
+  /**
+   * Total unread messages across every conversation, for the chat dot in the
+   * nav. Deliberately its own tiny endpoint: the nav is mounted on every
+   * screen and must not pull the whole conversation list to draw one dot.
+   */
+  app.get('/api/messages/unread-count', requireAuth, async (req, res) => {
+    try {
+      const user = currentUser(req);
+      const candidates = await prisma.conversation.findMany({
+        where: { participant_ids: { contains: user.id } },
+        select: { id: true, participant_ids: true },
+      });
+      // 'contains' is a substring match on a joined string, so re-check exactly.
+      const ids = candidates
+        .filter(c => c.participant_ids.split(',').includes(user.id))
+        .map(c => c.id);
+
+      const count = await prisma.message.count({
+        where: { conversation_id: { in: ids }, sender_id: { not: user.id }, read_at: null },
+      });
+      res.json({ count });
+    } catch (err) {
+      console.error('Failed to count unread messages:', err);
+      res.status(500).json({ error: 'Failed to count unread messages' });
     }
   });
 
@@ -1032,6 +1114,21 @@ async function startServer() {
     const { id: job_id } = req.params;
     const { message, proposed_price } = req.body;
 
+    // A bid carries the same ceiling as a budget - it is the number the poster
+    // sees on the applicant card and the one they agree to pay.
+    const bid = parseFloat(String(proposed_price));
+    if (!Number.isFinite(bid) || bid <= 0) {
+      return res.status(400).json({ error: 'Enter a price greater than zero' });
+    }
+    if (bid > BUDGET_MAX) {
+      return res
+        .status(400)
+        .json({ error: `A price cannot be more than $${BUDGET_MAX.toLocaleString('en-US')}` });
+    }
+
+    const lengthError = tooLong(message, DESCRIPTION_MAX, 'Your message');
+    if (lengthError) return res.status(400).json({ error: lengthError });
+
     try {
       // The helper is whoever holds the token. A helper_supabase_uid in the
       // body is ignored entirely.
@@ -1063,7 +1160,7 @@ async function startServer() {
           job_id,
           helper_id: helper.id,
           message: message || `I am interested in helping with: ${job.title}`,
-          proposed_price: parseFloat(proposed_price) || job.budget_min,
+          proposed_price: Math.round(bid * 100) / 100,
           status: 'PENDING'
         }
       });

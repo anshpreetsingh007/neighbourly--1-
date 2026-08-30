@@ -26,6 +26,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { basemapFor } from '../../lib/basemap';
 import { categoryIcon, categoryName } from '../../lib/categories';
 import { travelLabelBetween } from '../../lib/distance';
+import { formatMoney, formatRange } from '../../lib/money';
 import { useUserLocation } from '../../hooks/useUserLocation';
 
 /** date-fns throws on an invalid date, and a throw during render blanks the app. */
@@ -167,7 +168,7 @@ export const JobDetail: React.FC = () => {
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-3xl font-display font-bold leading-tight">{job.title}</h2>
             <span className="shrink-0 text-muted font-display font-bold text-2xl">
-              ${job.budget_min}–${job.budget_max}
+              {formatRange(job.budget_min, job.budget_max)}
             </span>
           </div>
 
@@ -313,7 +314,7 @@ export const JobDetail: React.FC = () => {
             {myApplication ? (
               <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest">
                 <Check className="w-4 h-4" />
-                Applied · ${myApplication.proposed_price}
+                Applied · {formatMoney(myApplication.proposed_price)}
               </div>
             ) : (
               <Button

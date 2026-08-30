@@ -83,7 +83,7 @@ export const Notifications: React.FC = () => {
             <p className="text-sm font-bold uppercase tracking-widest">Loading...</p>
           </div>
         ) : loadError ? (
-          <div className="text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
+          <div className="flex flex-col items-center text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
             <AlertTriangle className="w-8 h-8 text-rose-status mx-auto" />
             <p className="text-muted font-bold uppercase tracking-widest text-sm">Couldn't load notifications</p>
             <Button variant="secondary" size="sm" onClick={fetchNotifications}>Retry</Button>

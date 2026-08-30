@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import { BUDGET_MAX, formatRange } from '../lib/money';
 import { Loader2, Send, X } from 'lucide-react';
 import { Button } from './UI';
 
@@ -41,6 +42,10 @@ export const ApplyModal: React.FC<Props> = ({ job, onClose, onApplied }) => {
 
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter a price greater than zero.');
+      return;
+    }
+    if (amount > BUDGET_MAX) {
+      setError(`A price cannot be more than $${BUDGET_MAX.toLocaleString('en-US')}.`);
       return;
     }
 
@@ -98,7 +103,7 @@ export const ApplyModal: React.FC<Props> = ({ job, onClose, onApplied }) => {
           </div>
 
           <div className="text-xs font-bold uppercase tracking-widest text-faint">
-            Their budget: ${job.budget_min} – ${job.budget_max}
+            Their budget: {formatRange(job.budget_min, job.budget_max)}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import { basemapFor } from '../../lib/basemap';
+import { formatMoney } from '../../lib/money';
 import { useTheme } from '../../contexts/ThemeContext';
 import L from 'leaflet';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -32,7 +33,7 @@ const JobMarker = ({ job, isSelected, onClick }: { job: any, isSelected: boolean
     html: `
       <div class="flex items-center gap-2 glass p-2 rounded-2xl border ${isSelected ? 'border-amber-accent ring-4 ring-amber-accent/20' : 'border-hairline'} transition-all shadow-2xl">
         <span class="text-xl">${CATEGORY_ICONS[job.category] || '🛠️'}</span>
-        <span class="font-bold text-xs text-amber-accent">$${job.budget_min}</span>
+        <span class="font-bold text-xs text-amber-accent">${formatMoney(job.budget_min)}</span>
       </div>
     `,
     iconSize: [80, 40],
@@ -430,9 +431,9 @@ export const MapView: React.FC = () => {
                     </div>
                   )}
                   <div className="mt-4 flex items-center gap-2">
-                     <span className="text-3xl font-display font-bold text-amber-accent">${selectedJob.budget_min}</span>
+                     <span className="text-3xl font-display font-bold text-amber-accent">{formatMoney(selectedJob.budget_min)}</span>
                      <span className="text-faint font-bold">—</span>
-                     <span className="text-3xl font-display font-bold text-amber-accent">${selectedJob.budget_max}</span>
+                     <span className="text-3xl font-display font-bold text-amber-accent">{formatMoney(selectedJob.budget_max)}</span>
                   </div>
                 </div>
               </div>
@@ -447,7 +448,7 @@ export const MapView: React.FC = () => {
                 </button>
                 {(selectedJob.applications || []).length > 0 ? (
                   <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest glass rounded-2xl border border-emerald-status/20">
-                    Applied · ${selectedJob.applications[0].proposed_price}
+                    Applied · {formatMoney(selectedJob.applications[0].proposed_price)}
                   </div>
                 ) : (
                   <button
