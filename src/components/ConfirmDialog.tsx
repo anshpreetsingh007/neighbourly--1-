@@ -74,7 +74,7 @@ export const ConfirmDialog: React.FC<Props> = ({
           onClick={(e) => e.stopPropagation()}
           role="alertdialog"
           aria-modal="true"
-          className="glass backdrop-blur-3xl w-full max-w-sm rounded-3xl border border-white/15 p-6 space-y-5 shadow-2xl"
+          className="glass backdrop-blur-3xl w-full max-w-sm rounded-3xl border border-hairline p-6 space-y-5 shadow-2xl"
         >
           <div className="flex items-start gap-4">
             <div
@@ -89,7 +89,7 @@ export const ConfirmDialog: React.FC<Props> = ({
             </div>
             <div className="min-w-0 space-y-1">
               <h2 className="text-lg font-display font-bold leading-snug">{title}</h2>
-              {body && <p className="text-white/50 text-sm leading-relaxed">{body}</p>}
+              {body && <p className="text-muted text-sm leading-relaxed">{body}</p>}
             </div>
           </div>
 
@@ -98,7 +98,7 @@ export const ConfirmDialog: React.FC<Props> = ({
               type="button"
               onClick={onCancel}
               disabled={isWorking}
-              className="flex-1 glass hover:bg-white/10 rounded-2xl py-3.5 font-bold text-sm transition-all active:scale-95 disabled:opacity-50"
+              className="flex-1 glass hover:bg-surface-2 rounded-2xl py-3.5 font-bold text-sm transition-all active:scale-95 disabled:opacity-50"
             >
               {cancelLabel}
             </button>

@@ -24,7 +24,7 @@ export const Welcome: React.FC = () => {
         <h1 className="text-5xl font-display font-bold mb-4 tracking-tight">
           Neighbourly
         </h1>
-        <p className="text-white/60 text-lg mb-12">
+        <p className="text-body text-lg mb-12">
           The hyperlocal handyman marketplace for your community.
         </p>
 
@@ -35,7 +35,7 @@ export const Welcome: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold">Secure Escrow</h3>
-              <p className="text-sm text-white/50">Payments are held safely until the job is done.</p>
+              <p className="text-sm text-muted">Payments are held safely until the job is done.</p>
             </div>
           </GlassCard>
 
@@ -45,7 +45,7 @@ export const Welcome: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold">Hyperlocal</h3>
-              <p className="text-sm text-white/50">Find help right in your own neighbourhood.</p>
+              <p className="text-sm text-muted">Find help right in your own neighbourhood.</p>
             </div>
           </GlassCard>
         </div>

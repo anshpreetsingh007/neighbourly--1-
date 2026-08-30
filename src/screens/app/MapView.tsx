@@ -9,28 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
+import { useTheme } from '../../contexts/ThemeContext';
+import { basemapFor } from '../../lib/basemap';
 
-/**
- * CARTO's raster basemaps now watermark every unauthenticated tile with
- * "API KEY REQUIRED", so their dark style is used only when a key is present.
- * Without one we fall back to OpenStreetMap, which needs no key - a light map
- * is a lot better than a map covered in watermarks.
- *
- * Free key (5M tiles/month): https://carto.com/basemaps/apikey
- */
-const CARTO_KEY = import.meta.env.VITE_CARTO_API_KEY;
-
-const BASEMAP = CARTO_KEY
-  ? {
-      url: `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }
-  : {
-      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    };
 
 const CATEGORY_ICONS: Record<string, string> = {
   snow: '❄️',
@@ -48,7 +29,7 @@ const JobMarker = ({ job, isSelected, onClick }: { job: any, isSelected: boolean
   const icon = L.divIcon({
     className: 'custom-div-icon',
     html: `
-      <div class="flex items-center gap-2 glass p-2 rounded-2xl border ${isSelected ? 'border-amber-accent ring-4 ring-amber-accent/20' : 'border-white/20'} transition-all shadow-2xl">
+      <div class="flex items-center gap-2 glass p-2 rounded-2xl border ${isSelected ? 'border-amber-accent ring-4 ring-amber-accent/20' : 'border-hairline'} transition-all shadow-2xl">
         <span class="text-xl">${CATEGORY_ICONS[job.category] || '🛠️'}</span>
         <span class="font-bold text-xs text-amber-accent">$${job.budget_min}</span>
       </div>
@@ -78,6 +59,8 @@ const MapCenterer = ({ center }: { center: [number, number] }) => {
 export const MapView: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { theme } = useTheme();
+  const basemap = basemapFor(theme);
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,8 +152,9 @@ export const MapView: React.FC = () => {
           zoomControl={false}
         >
           <TileLayer
-            attribution={BASEMAP.attribution}
-            url={BASEMAP.url}
+            key={theme}
+            attribution={basemap.attribution}
+            url={basemap.url}
           />
           <MapCenterer center={mapCenter} />
           
@@ -191,19 +175,19 @@ export const MapView: React.FC = () => {
       {/* Header Overlays */}
       <div className="absolute top-8 left-6 right-6 flex gap-4 z-10 pointer-events-none">
         <div className="relative flex-1 pointer-events-auto group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-amber-accent transition-colors" />
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-faint group-focus-within:text-amber-accent transition-colors" />
           <input
             type="text"
             placeholder="Search local jobs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full glass rounded-3xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium text-white"
+            className="w-full glass rounded-3xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium text-strong"
           />
         </div>
         <div className="pointer-events-auto">
             <Button
               variant="secondary"
-              className="p-5 rounded-3xl border border-white/5 bg-[#080a12]/80 opacity-50 cursor-not-allowed"
+              className="p-5 rounded-3xl border border-hairline bg-panel opacity-50 cursor-not-allowed"
               disabled
               title="Filters are coming soon"
             >
@@ -216,7 +200,7 @@ export const MapView: React.FC = () => {
       <div className="absolute right-6 bottom-32 flex flex-col gap-3 z-10">
         <button 
             onClick={locateUser}
-            className="p-5 glass rounded-2xl shadow-2xl border border-white/5 bg-white/5 active:scale-90 transition-all hover:bg-white/10"
+            className="p-5 glass rounded-2xl shadow-2xl border border-hairline bg-surface-1 active:scale-90 transition-all hover:bg-surface-2"
         >
           <Navigation className="w-6 h-6 text-amber-accent" />
         </button>
@@ -224,20 +208,20 @@ export const MapView: React.FC = () => {
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 bg-[#080a12]/60 backdrop-blur-sm z-50 flex items-center justify-center">
-             <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-white/5">
+        <div className="absolute inset-0 bg-panel backdrop-blur-sm z-50 flex items-center justify-center">
+             <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-hairline">
                 <Loader2 className="w-12 h-12 text-amber-accent animate-spin" />
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-white/60">Scanning Area...</p>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-body">Scanning Area...</p>
              </div>
         </div>
       )}
 
       {/* Error Overlay */}
       {!isLoading && loadError && (
-        <div className="absolute inset-0 bg-[#080a12]/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-panel backdrop-blur-sm z-50 flex items-center justify-center">
              <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-rose-status/20 text-center">
                 <AlertTriangle className="w-12 h-12 text-rose-status" />
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-white/60">Couldn't load jobs</p>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase text-body">Couldn't load jobs</p>
                 <Button variant="secondary" size="sm" onClick={fetchJobs}>Retry</Button>
              </div>
         </div>
@@ -253,23 +237,23 @@ export const MapView: React.FC = () => {
             transition={{ type: 'spring', damping: 20, stiffness: 150 }}
             className="absolute bottom-28 left-6 right-6 z-20 md:max-w-xl md:left-1/2 md:-translate-x-1/2"
           >
-            <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-white/10 bg-[#0b0e1a]/95">
+            <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-hairline bg-panel">
               <button 
                 onClick={() => setSelectedJob(null)}
-                className="absolute top-6 right-6 p-2.5 hover:bg-white/10 rounded-2xl transition-all active:scale-90 border border-white/5 bg-white/5"
+                className="absolute top-6 right-6 p-2.5 hover:bg-surface-2 rounded-2xl transition-all active:scale-90 border border-hairline bg-surface-1"
               >
-                <X className="w-5 h-5 text-white/50" />
+                <X className="w-5 h-5 text-muted" />
               </button>
 
               <div className="flex gap-6">
-                <div className="w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl shadow-inner border border-white/10 bg-white/[0.06]">
+                <div className="w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl shadow-inner border border-hairline bg-surface-1">
                   {CATEGORY_ICONS[selectedJob.category] || '🛠️'}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-2xl font-display font-bold truncate pr-8 text-white">{selectedJob.title}</h3>
+                    <h3 className="text-2xl font-display font-bold truncate pr-8 text-strong">{selectedJob.title}</h3>
                   </div>
-                  <div className="flex items-center gap-4 text-[10px] text-white/40 font-black uppercase tracking-widest mt-1">
+                  <div className="flex items-center gap-4 text-[10px] text-muted font-black uppercase tracking-widest mt-1">
                     <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-amber-accent" />
                         {selectedJob.address?.split(',')[0] || 'Approximate area'}
@@ -281,7 +265,7 @@ export const MapView: React.FC = () => {
                   </div>
                   <div className="mt-4 flex items-center gap-2">
                      <span className="text-3xl font-display font-bold text-amber-accent">${selectedJob.budget_min}</span>
-                     <span className="text-white/20 font-bold">—</span>
+                     <span className="text-faint font-bold">—</span>
                      <span className="text-3xl font-display font-bold text-amber-accent">${selectedJob.budget_max}</span>
                   </div>
                 </div>
@@ -289,7 +273,7 @@ export const MapView: React.FC = () => {
 
               <div className="flex gap-4 mt-8">
                 <button 
-                    className="flex-1 py-4 glass rounded-2xl border border-white/5 text-xs font-black uppercase tracking-widest text-white hover:bg-white/10 transition-all active:scale-95" 
+                    className="flex-1 py-4 glass rounded-2xl border border-hairline text-xs font-black uppercase tracking-widest text-strong hover:bg-surface-2 transition-all active:scale-95" 
                     onClick={() => setSelectedJob(null)}
                 >
                     Close

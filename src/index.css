@@ -11,25 +11,91 @@
   --color-sky-status: #0ea5e9;
 }
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Every surface and text colour resolves through these, so switching themes is
+   a matter of swapping the variable values rather than restyling components.
+   ThemeContext sets data-theme on <html>; dark is the default because the app
+   was designed dark-first.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme="dark"] {
+  --page-bg: #0f172a;
+  --page-gradient:
+    radial-gradient(at 0% 0%, #1e1b4b 0%, transparent 50%),
+    radial-gradient(at 100% 0%, #4c1d95 0%, transparent 50%),
+    radial-gradient(at 100% 100%, #0f172a 0%, transparent 50%),
+    radial-gradient(at 0% 100%, #1e1b4b 0%, transparent 50%);
+
+  --text-strong: #ffffff;
+  --text-body: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.40);
+  --text-faint: rgba(255, 255, 255, 0.20);
+
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-hover: rgba(255, 255, 255, 0.14);
+  --panel-bg: rgba(11, 14, 26, 0.95);
+  --hairline: rgba(255, 255, 255, 0.10);
+  --surface-1: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.10);
+}
+
+:root[data-theme="light"] {
+  --page-bg: #f4f6fb;
+  --page-gradient:
+    radial-gradient(at 0% 0%, #e6e9f7 0%, transparent 50%),
+    radial-gradient(at 100% 0%, #ede7f9 0%, transparent 50%),
+    radial-gradient(at 100% 100%, #e8eefc 0%, transparent 50%),
+    radial-gradient(at 0% 100%, #eceffb 0%, transparent 50%);
+
+  --text-strong: #0f172a;
+  --text-body: rgba(15, 23, 42, 0.78);
+  --text-muted: rgba(15, 23, 42, 0.52);
+  --text-faint: rgba(15, 23, 42, 0.32);
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(15, 23, 42, 0.10);
+  --glass-hover: rgba(255, 255, 255, 0.90);
+  --panel-bg: rgba(255, 255, 255, 0.96);
+  --hairline: rgba(15, 23, 42, 0.10);
+  --surface-1: rgba(15, 23, 42, 0.04);
+  --surface-2: rgba(15, 23, 42, 0.08);
+}
+
+/* Semantic utilities. Prefer these over text-white / border-white so a
+   component works in both themes without knowing which one is active.
+
+   Declared with @utility rather than as plain classes so Tailwind variants
+   (hover:, focus:, md:) apply to them like any built-in utility. */
+@utility text-strong { color: var(--text-strong); }
+@utility text-body { color: var(--text-body); }
+@utility text-muted { color: var(--text-muted); }
+@utility text-faint { color: var(--text-faint); }
+@utility border-hairline { border-color: var(--hairline); }
+@utility bg-surface-1 { background-color: var(--surface-1); }
+@utility bg-surface-2 { background-color: var(--surface-2); }
+@utility bg-panel { background-color: var(--panel-bg); }
+
 .glass {
-  @apply backdrop-blur-md border border-white/18;
-  background: rgba(255, 255, 255, 0.08);
+  @apply backdrop-blur-md border;
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
 }
 
 .glass-light {
-  @apply backdrop-blur-md border border-white/18;
-  background: rgba(255, 255, 255, 0.72);
+  @apply backdrop-blur-md border;
+  background: var(--glass-hover);
+  border-color: var(--glass-border);
 }
 
 body {
-
-  background: radial-gradient(at 0% 0%, #1e1b4b 0%, transparent 50%),
-                radial-gradient(at 100% 0%, #4c1d95 0%, transparent 50%),
-                radial-gradient(at 100% 100%, #0f172a 0%, transparent 50%),
-                radial-gradient(at 0% 100%, #1e1b4b 0%, transparent 50%);
-  background-color: #0f172a;
+  background: var(--page-gradient);
+  background-color: var(--page-bg);
   background-attachment: fixed;
-  @apply text-white min-h-screen font-sans antialiased;
+  color: var(--text-strong);
+  @apply min-h-screen font-sans antialiased;
 }
 
 

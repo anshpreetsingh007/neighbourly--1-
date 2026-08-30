@@ -17,7 +17,7 @@ export const AuthCallback: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f1a] text-white">
       <div className="text-center">
         <div className="w-12 h-12 border-4 border-amber-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-white/60">Completing sign in...</p>
+        <p className="text-body">Completing sign in...</p>
       </div>
     </div>
   );

@@ -190,12 +190,12 @@ export const Home: React.FC = () => {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Good Morning</h2>
-          <h1 className="text-3xl md:text-4xl font-display font-bold text-white tracking-tight">
+          <h2 className="text-muted text-[10px] font-black uppercase tracking-[0.2em] mb-1">Good Morning</h2>
+          <h1 className="text-3xl md:text-4xl font-display font-bold text-strong tracking-tight">
             {user?.user_metadata?.full_name?.split(' ')[0] || 'Neighbour'}
           </h1>
         </div>
-        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl transition-transform hover:scale-110 cursor-pointer">
+        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-hairline shadow-2xl transition-transform hover:scale-110 cursor-pointer">
           <img 
             src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/100/100"} 
             alt="Avatar" 
@@ -208,18 +208,18 @@ export const Home: React.FC = () => {
       {/* Search & Filter */}
       <div className="flex gap-4">
         <div className="relative flex-1 group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-amber-accent transition-colors" />
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-faint group-focus-within:text-amber-accent transition-colors" />
           <input
             type="text"
             placeholder="Search for local help..."
-            className="w-full glass rounded-2xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium placeholder:text-white/10"
+            className="w-full glass rounded-2xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium placeholder:text-faint"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <Button
           variant="secondary"
-          className="p-5 rounded-2xl border border-white/5 opacity-50 cursor-not-allowed"
+          className="p-5 rounded-2xl border border-hairline opacity-50 cursor-not-allowed"
           disabled
           title="Filters are coming soon"
         >
@@ -233,7 +233,7 @@ export const Home: React.FC = () => {
           onClick={() => setActiveCategory('All')}
           className={clsx(
             "px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all",
-            activeCategory === 'All' ? "bg-amber-accent text-slate-900 shadow-xl shadow-amber-500/20" : "glass text-white/40 hover:text-white/80 hover:bg-white/10"
+            activeCategory === 'All' ? "bg-amber-accent text-slate-900 shadow-xl shadow-amber-500/20" : "glass text-muted hover:text-body hover:bg-surface-2"
           )}
         >
           All
@@ -244,7 +244,7 @@ export const Home: React.FC = () => {
             onClick={() => setActiveCategory(cat.id)}
             className={clsx(
               "px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
-              activeCategory === cat.id ? "bg-amber-accent text-slate-900 shadow-xl shadow-amber-500/20" : "glass text-white/40 hover:text-white/80 hover:bg-white/10"
+              activeCategory === cat.id ? "bg-amber-accent text-slate-900 shadow-xl shadow-amber-500/20" : "glass text-muted hover:text-body hover:bg-surface-2"
             )}
           >
             {cat.name}
@@ -254,7 +254,7 @@ export const Home: React.FC = () => {
 
       {/* Jobs Feed */}
       <section className="space-y-6">
-        <div className="flex items-center gap-6 px-2 border-b border-white/5">
+        <div className="flex items-center gap-6 px-2 border-b border-hairline">
           {([
             ['nearby', 'Nearby Jobs'],
             ['mine', 'Your Listings'],
@@ -264,7 +264,7 @@ export const Home: React.FC = () => {
               onClick={() => setTab(key)}
               className={clsx(
                 'relative pb-3 text-2xl font-display font-bold tracking-tight transition-colors',
-                tab === key ? 'text-white' : 'text-white/25 hover:text-white/50'
+                tab === key ? 'text-strong' : 'text-faint hover:text-muted'
               )}
             >
               {label}
@@ -285,8 +285,8 @@ export const Home: React.FC = () => {
               <p className="text-[10px] font-black tracking-[0.2em] uppercase">Loading your listings...</p>
             </div>
           ) : myJobs.length === 0 ? (
-            <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-white/10 space-y-4">
-              <p className="text-white/20 font-black tracking-widest uppercase text-sm">You haven't posted anything</p>
+            <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-hairline space-y-4">
+              <p className="text-faint font-black tracking-widest uppercase text-sm">You haven't posted anything</p>
               <Button size="sm" onClick={() => navigate('/post-job')}>Post a job</Button>
             </div>
           ) : (
@@ -295,11 +295,11 @@ export const Home: React.FC = () => {
                 const count = (job.applications || []).length;
                 const hired = (job.applications || []).find((a: any) => a.status === 'ACCEPTED');
                 return (
-                  <GlassCard key={job.id} hover className="p-5 space-y-4 border border-white/5 bg-white/[0.03]">
+                  <GlassCard key={job.id} hover className="p-5 space-y-4 border border-hairline bg-surface-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h4 className="font-display font-bold text-lg truncate">{job.title}</h4>
-                        <p className="text-white/30 text-[11px] font-bold uppercase tracking-widest mt-1">
+                        <p className="text-faint text-[11px] font-bold uppercase tracking-widest mt-1">
                           {relativeTime(job.created_at)}
                         </p>
                       </div>
@@ -315,10 +315,10 @@ export const Home: React.FC = () => {
                       </span>
                     </div>
 
-                    <p className="text-xs text-white/30 line-clamp-2 leading-relaxed">{job.description}</p>
+                    <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
 
-                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
-                      <span className="text-xs font-bold uppercase tracking-widest text-white/40 flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-hairline">
+                      <span className="text-xs font-bold uppercase tracking-widest text-muted flex items-center gap-2">
                         <Users className="w-3.5 h-3.5" />
                         {hired
                           ? `Hired ${hired.helper?.name || 'someone'}`
@@ -339,7 +339,7 @@ export const Home: React.FC = () => {
                           type="button"
                           onClick={() => setDeletingJob(job)}
                           aria-label={`Delete ${job.title}`}
-                          className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-white/40 hover:text-rose-status hover:bg-rose-status/10 hover:border-rose-status/30 transition-all active:scale-90"
+                          className="p-2.5 rounded-xl bg-surface-1 border border-hairline text-muted hover:text-rose-status hover:bg-rose-status/10 hover:border-rose-status/30 transition-all active:scale-90"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -358,14 +358,14 @@ export const Home: React.FC = () => {
         ) : loadError ? (
           <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-rose-status/30 space-y-4">
             <AlertTriangle className="w-10 h-10 text-rose-status mx-auto" />
-            <p className="text-white/40 font-black tracking-widest uppercase text-sm">Couldn't load jobs</p>
-            <p className="text-[10px] text-white/20 uppercase tracking-tight">Check your connection and try again</p>
+            <p className="text-muted font-black tracking-widest uppercase text-sm">Couldn't load jobs</p>
+            <p className="text-[10px] text-faint uppercase tracking-tight">Check your connection and try again</p>
             <Button variant="secondary" size="sm" onClick={fetchJobs}>Retry</Button>
           </div>
         ) : filteredJobs.length > 0 ? (
           <div className="grid md:grid-cols-2 gap-6">
             {filteredJobs.map((job) => (
-              <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-white/5 bg-white/[0.03]">
+              <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-hairline bg-surface-1">
                 <div className="flex gap-4">
                     <div className="relative shrink-0">
                         <img 
@@ -387,7 +387,7 @@ export const Home: React.FC = () => {
                             </span>
                         </div>
                         
-                        <div className="flex items-center gap-4 text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                        <div className="flex items-center gap-4 text-[10px] text-muted font-bold uppercase tracking-wider">
                             <div className="flex items-center gap-1.5">
                                 <MapPin className="w-3.5 h-3.5 text-amber-accent" />
                                 {job.address?.split(',')[0] || 'Nearby'}
@@ -398,12 +398,12 @@ export const Home: React.FC = () => {
                             </div>
                         </div>
 
-                        <p className="text-xs text-white/30 line-clamp-2 leading-relaxed">{job.description}</p>
+                        <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
                     </div>
                 </div>
                 
-                <div className="flex gap-3 pt-2 border-t border-white/5">
-                    <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-white/5" onClick={() => handleStartChat(job)}>
+                <div className="flex gap-3 pt-2 border-t border-hairline">
+                    <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-hairline" onClick={() => handleStartChat(job)}>
                          <MessageSquare className="w-4 h-4 mr-2" /> Message
                     </Button>
                     {myApplication(job) ? (
@@ -421,9 +421,9 @@ export const Home: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-white/10">
-            <p className="text-white/20 font-black tracking-widest uppercase text-sm">No local gigs found</p>
-            <p className="text-[10px] text-white/10 mt-2 uppercase tracking-tight">Try a different category or area</p>
+          <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-hairline">
+            <p className="text-faint font-black tracking-widest uppercase text-sm">No local gigs found</p>
+            <p className="text-[10px] text-faint mt-2 uppercase tracking-tight">Try a different category or area</p>
           </div>
         )}
       </section>
@@ -441,9 +441,9 @@ export const Home: React.FC = () => {
                     <span className="text-3xl font-display font-bold text-amber-accent tracking-tighter">${job.budget_min}+</span>
                   </div>
                   <h4 className="text-2xl font-bold mb-3 tracking-tight">{job.title}</h4>
-                  <p className="text-white/50 text-sm mb-8 leading-relaxed line-clamp-2">{job.description}</p>
+                  <p className="text-muted text-sm mb-8 leading-relaxed line-clamp-2">{job.description}</p>
                   <div className="flex gap-4">
-                    <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-white/5 border border-white/5" onClick={() => handleStartChat(job)}>
+                    <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-surface-1 border border-hairline" onClick={() => handleStartChat(job)}>
                         <MessageSquare className="w-5 h-5" />
                     </Button>
                     {myApplication(job) ? (

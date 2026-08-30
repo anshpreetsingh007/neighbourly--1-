@@ -34,7 +34,7 @@ const relativeTime = (value: unknown) => {
 
 const STATUS_STYLES: Record<string, string> = {
   ACCEPTED: 'bg-emerald-status/20 text-emerald-status border-emerald-status/30',
-  REJECTED: 'bg-white/5 text-white/30 border-white/10',
+  REJECTED: 'bg-surface-1 text-faint border-hairline',
   PENDING: 'bg-amber-accent/15 text-amber-accent border-amber-accent/30',
 };
 
@@ -92,13 +92,13 @@ export const MyJobs: React.FC = () => {
       <header className="flex items-center gap-3">
         <button
           onClick={() => navigate('/account')}
-          className="p-2.5 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all active:scale-90"
+          className="p-2.5 rounded-2xl bg-surface-1 border border-hairline hover:bg-surface-2 transition-all active:scale-90"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
         <div>
           <h1 className="text-3xl font-display font-bold">Your Jobs</h1>
-          <p className="text-white/40 text-sm font-medium">Review who applied and pick someone</p>
+          <p className="text-muted text-sm font-medium">Review who applied and pick someone</p>
         </div>
       </header>
 
@@ -127,7 +127,7 @@ export const MyJobs: React.FC = () => {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="font-display font-bold text-lg truncate">{job.title}</h2>
-                    <p className="text-white/40 text-xs font-medium flex items-center gap-1.5 mt-1">
+                    <p className="text-muted text-xs font-medium flex items-center gap-1.5 mt-1">
                       <MapPin className="w-3 h-3 shrink-0" />
                       <span className="truncate">{job.address || 'Location hidden'}</span>
                     </p>
@@ -144,7 +144,7 @@ export const MyJobs: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 text-white/40 text-xs font-bold uppercase tracking-widest">
+                <div className="flex items-center gap-2 text-muted text-xs font-bold uppercase tracking-widest">
                   <Users className="w-3.5 h-3.5" />
                   {applications.length === 0
                     ? 'No applicants yet'
@@ -159,10 +159,10 @@ export const MyJobs: React.FC = () => {
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
                         className={clsx(
-                          'rounded-2xl p-4 border bg-white/[0.03]',
+                          'rounded-2xl p-4 border bg-surface-1',
                           application.status === 'ACCEPTED'
                             ? 'border-emerald-status/30'
-                            : 'border-white/5',
+                            : 'border-hairline',
                           application.status === 'REJECTED' && 'opacity-40'
                         )}
                       >
@@ -180,7 +180,7 @@ export const MyJobs: React.FC = () => {
                             <p className="font-bold truncate">
                               {application.helper?.name || 'Neighbour'}
                             </p>
-                            <p className="text-white/30 text-[11px] font-medium">
+                            <p className="text-faint text-[11px] font-medium">
                               Applied {relativeTime(application.created_at)}
                             </p>
                           </div>
@@ -200,7 +200,7 @@ export const MyJobs: React.FC = () => {
                         </div>
 
                         {application.message && (
-                          <p className="text-white/50 text-sm mt-3 leading-relaxed">
+                          <p className="text-muted text-sm mt-3 leading-relaxed">
                             {application.message}
                           </p>
                         )}
@@ -208,7 +208,7 @@ export const MyJobs: React.FC = () => {
                         <div className="flex gap-2 mt-4">
                           <Button
                             variant="secondary"
-                            className="flex-1 text-xs py-3 rounded-xl border border-white/5"
+                            className="flex-1 text-xs py-3 rounded-xl border border-hairline"
                             onClick={() => navigate('/chat')}
                           >
                             <MessageSquare className="w-4 h-4 mr-2" /> Message

@@ -43,14 +43,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass rounded-3xl border border-white/10 p-8 max-w-md w-full text-center space-y-5">
+        <div className="glass rounded-3xl border border-hairline p-8 max-w-md w-full text-center space-y-5">
           <div className="w-16 h-16 rounded-2xl bg-rose-status/15 border border-rose-status/30 flex items-center justify-center mx-auto">
             <AlertTriangle className="w-8 h-8 text-rose-status" />
           </div>
 
           <div className="space-y-2">
             <h2 className="text-2xl font-display font-bold">Something went wrong</h2>
-            <p className="text-white/50 text-sm leading-relaxed">
+            <p className="text-muted text-sm leading-relaxed">
               {this.props.message ||
                 'This screen ran into a problem. Nothing you did caused it, and your data is safe.'}
             </p>
@@ -65,7 +65,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="flex gap-3">
             <button
               onClick={this.handleReset}
-              className="flex-1 glass hover:bg-white/10 rounded-2xl py-3.5 font-bold text-sm transition-all active:scale-95"
+              className="flex-1 glass hover:bg-surface-2 rounded-2xl py-3.5 font-bold text-sm transition-all active:scale-95"
             >
               Try again
             </button>

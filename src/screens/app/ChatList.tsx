@@ -48,7 +48,7 @@ export const ChatList: React.FC = () => {
       </header>
 
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
         <input
           type="text"
           value={searchQuery}
@@ -67,7 +67,7 @@ export const ChatList: React.FC = () => {
         ) : loadError ? (
           <div className="text-center py-20 glass rounded-3xl border border-dashed border-rose-status/30 space-y-4">
             <AlertTriangle className="w-8 h-8 text-rose-status mx-auto" />
-            <p className="text-white/40 font-bold uppercase tracking-widest text-sm">Couldn't load conversations</p>
+            <p className="text-muted font-bold uppercase tracking-widest text-sm">Couldn't load conversations</p>
             <Button variant="secondary" size="sm" onClick={fetchConversations}>Retry</Button>
           </div>
         ) : filteredConversations.length > 0 ? (
@@ -87,7 +87,7 @@ export const ChatList: React.FC = () => {
                 >
                   <GlassCard 
                     hover 
-                    className="p-4 flex items-center gap-4 cursor-pointer border border-white/5 active:scale-98 transition-all group-hover:bg-white/5"
+                    className="p-4 flex items-center gap-4 cursor-pointer border border-hairline active:scale-98 transition-all group-hover:bg-surface-1"
                   >
                     <div className="relative">
                       <img 
@@ -102,11 +102,11 @@ export const ChatList: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center mb-1">
                         <h4 className="font-bold truncate text-lg group-hover:text-amber-accent transition-colors">{chat.otherUser?.name || 'Anonymous User'}</h4>
-                        <span className="text-[10px] text-white/30 font-bold uppercase tracking-tighter">
+                        <span className="text-[10px] text-faint font-bold uppercase tracking-tighter">
                           {timeStr}
                         </span>
                       </div>
-                      <p className="text-sm text-white/50 truncate pr-4 font-medium italic">
+                      <p className="text-sm text-muted truncate pr-4 font-medium italic">
                         {lastMessage?.body || 'No messages yet... Start the conversation!'}
                       </p>
                       {chat.job && (
@@ -118,7 +118,7 @@ export const ChatList: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-amber-accent transition-all group-hover:translate-x-1" />
+                      <ChevronRight className="w-5 h-5 text-faint group-hover:text-amber-accent transition-all group-hover:translate-x-1" />
                     </div>
                   </GlassCard>
                 </Link>
@@ -129,12 +129,12 @@ export const ChatList: React.FC = () => {
             }
           })
         ) : (
-          <div className="text-center py-20 glass rounded-3xl border border-dashed border-white/10">
-            <div className="bg-white/5 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <MessageSquare className="w-8 h-8 text-white/20" />
+          <div className="text-center py-20 glass rounded-3xl border border-dashed border-hairline">
+            <div className="bg-surface-1 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-8 h-8 text-faint" />
             </div>
-            <p className="text-white/30 font-bold uppercase tracking-widest text-sm">No Conversations Yet</p>
-            <p className="text-[10px] text-white/10 mt-1 uppercase tracking-tight">Contact a helper to start chatting</p>
+            <p className="text-faint font-bold uppercase tracking-widest text-sm">No Conversations Yet</p>
+            <p className="text-[10px] text-faint mt-1 uppercase tracking-tight">Contact a helper to start chatting</p>
           </div>
         )}
       </div>

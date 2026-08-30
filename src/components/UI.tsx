@@ -43,8 +43,8 @@ export const Button: React.FC<ButtonProps> = ({
 }) => {
   const variants = {
     primary: "bg-amber-accent text-slate-900 hover:bg-amber-400 font-bold",
-    secondary: "glass text-white hover:bg-white/20",
-    ghost: "bg-transparent text-white hover:bg-white/10",
+    secondary: "glass text-strong hover:bg-surface-2",
+    ghost: "bg-transparent text-strong hover:bg-surface-2",
     danger: "bg-rose-status text-white hover:bg-rose-600",
   };
 

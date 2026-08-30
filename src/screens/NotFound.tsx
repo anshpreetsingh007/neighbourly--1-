@@ -23,7 +23,7 @@ export const NotFound: React.FC = () => {
           </div>
           <div>
             <h1 className="text-4xl font-display font-bold mb-2">404</h1>
-            <p className="text-white/50">This page doesn't exist, or it moved.</p>
+            <p className="text-muted">This page doesn't exist, or it moved.</p>
           </div>
           <Button className="w-full" onClick={() => navigate('/')}>Back to Home</Button>
         </GlassCard>

@@ -83,16 +83,16 @@ export const ProfileSetup: React.FC = () => {
         <GlassCard className="p-8">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-display font-bold mb-2">Complete Profile</h2>
-            <p className="text-white/50">Just a few more details to get started</p>
+            <p className="text-muted">Just a few more details to get started</p>
           </div>
 
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-24 h-24 bg-white/5 rounded-3xl flex items-center justify-center border-2 border-dashed border-white/20 overflow-hidden">
+              <div className="w-24 h-24 bg-surface-1 rounded-3xl flex items-center justify-center border-2 border-dashed border-hairline overflow-hidden">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <User className="w-10 h-10 text-white/20" />
+                  <User className="w-10 h-10 text-faint" />
                 )}
               </div>
               <label className="absolute -bottom-2 -right-2 bg-amber-accent p-2 rounded-xl shadow-lg cursor-pointer hover:scale-110 transition-transform">
@@ -108,9 +108,9 @@ export const ProfileSetup: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">First Name</label>
+              <label className="text-sm font-medium text-body ml-1">First Name</label>
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
                 <input
                   type="text"
                   value={firstName}
@@ -123,11 +123,11 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">
-                Last Name <span className="text-white/30 font-normal">(optional)</span>
+              <label className="text-sm font-medium text-body ml-1">
+                Last Name <span className="text-faint font-normal">(optional)</span>
               </label>
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
                 <input
                   type="text"
                   value={lastName}
@@ -136,7 +136,7 @@ export const ProfileSetup: React.FC = () => {
                   placeholder="Pabla"
                 />
               </div>
-              <p className="text-xs text-white/40 ml-1">
+              <p className="text-xs text-muted ml-1">
                 Neighbours see "{firstName.trim() || 'Karan'}
                 {lastName.trim() ? ` ${lastName.trim().charAt(0).toUpperCase()}.` : ''}" - your full
                 surname is never shown publicly.
@@ -144,9 +144,9 @@ export const ProfileSetup: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">Neighbourhood</label>
+              <label className="text-sm font-medium text-body ml-1">Neighbourhood</label>
               <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
                 <input
                   type="text"
                   value={neighbourhood}

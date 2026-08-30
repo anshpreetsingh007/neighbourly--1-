@@ -16,6 +16,7 @@ import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { NotFound } from './screens/NotFound';
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -82,7 +83,8 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 export default function App() {
   return (
     <ErrorBoundary>
-      <ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
         <AuthProvider>
         <Router>
         <Routes>
@@ -113,8 +115,9 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Router>
-        </AuthProvider>
-      </ToastProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

@@ -102,7 +102,7 @@ export const SignIn: React.FC = () => {
           <h2 className="text-3xl font-display font-bold mb-2">
             {isSignUp ? 'Create Account' : 'Welcome Back'}
           </h2>
-          <p className="text-white/50 mb-8">
+          <p className="text-muted mb-8">
             {isSignUp ? 'Join the Neighbourly community' : 'Sign in to continue to Neighbourly'}
           </p>
 
@@ -129,25 +129,25 @@ export const SignIn: React.FC = () => {
             {isSignUp && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white/70 ml-1">First Name</label>
+                  <label className="text-sm font-medium text-body ml-1">First Name</label>
                   <input
                     type="text"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    className="w-full bg-surface-1 border border-hairline rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                     placeholder="Karan"
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white/70 ml-1">
-                    Last Name <span className="text-white/30 font-normal">(optional)</span>
+                  <label className="text-sm font-medium text-body ml-1">
+                    Last Name <span className="text-faint font-normal">(optional)</span>
                   </label>
                   <input
                     type="text"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                    className="w-full bg-surface-1 border border-hairline rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                     placeholder="Pabla"
                   />
                 </div>
@@ -155,21 +155,21 @@ export const SignIn: React.FC = () => {
             )}
 
             {isSignUp && (
-              <p className="text-xs text-white/40 ml-1 -mt-1">
+              <p className="text-xs text-muted ml-1 -mt-1">
                 Neighbours will see you as "{firstName.trim() || 'Karan'}
                 {lastName.trim() ? ` ${lastName.trim().charAt(0).toUpperCase()}.` : ''}"
               </p>
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">Email Address</label>
+              <label className="text-sm font-medium text-body ml-1">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setSentTo(null); }}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                  className="w-full bg-surface-1 border border-hairline rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                   placeholder="name@example.com"
                   required
                 />
@@ -177,14 +177,14 @@ export const SignIn: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">Password</label>
+              <label className="text-sm font-medium text-body ml-1">Password</label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                  className="w-full bg-surface-1 border border-hairline rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                   placeholder="••••••••"
                   required
                 />
@@ -198,10 +198,10 @@ export const SignIn: React.FC = () => {
 
           <div className="relative my-8">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
+              <div className="w-full border-t border-hairline"></div>
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-[#1a1a2e] px-2 text-white/30">Or continue with</span>
+              <span className="bg-panel px-2 text-faint">Or continue with</span>
             </div>
           </div>
 
@@ -217,7 +217,7 @@ export const SignIn: React.FC = () => {
             </Button>
           </div>
 
-          <p className="mt-8 text-center text-sm text-white/40">
+          <p className="mt-8 text-center text-sm text-muted">
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button 
               onClick={() => setIsSignUp(!isSignUp)}

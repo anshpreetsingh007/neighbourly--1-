@@ -80,32 +80,32 @@ export const ApplyModal: React.FC<Props> = ({ job, onClose, onApplied }) => {
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
-          className="w-full md:max-w-md max-h-[88vh] overflow-y-auto glass backdrop-blur-3xl rounded-t-3xl md:rounded-3xl border border-white/15 p-6 pb-8 space-y-5 shadow-2xl"
+          className="w-full md:max-w-md max-h-[88vh] overflow-y-auto glass backdrop-blur-3xl rounded-t-3xl md:rounded-3xl border border-hairline p-6 pb-8 space-y-5 shadow-2xl"
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="text-xl font-display font-bold">Apply for this job</h2>
-              <p className="text-white/40 text-sm font-medium truncate">{job.title}</p>
+              <p className="text-muted text-sm font-medium truncate">{job.title}</p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all active:scale-90 shrink-0"
+              className="p-2 rounded-xl bg-surface-1 hover:bg-surface-2 transition-all active:scale-90 shrink-0"
               aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="text-xs font-bold uppercase tracking-widest text-white/30">
+          <div className="text-xs font-bold uppercase tracking-widest text-faint">
             Their budget: ${job.budget_min} – ${job.budget_max}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">Your price</label>
+              <label className="text-sm font-medium text-body ml-1">Your price</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted font-bold">$</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -113,7 +113,7 @@ export const ApplyModal: React.FC<Props> = ({ job, onClose, onApplied }) => {
                   step="1"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-9 pr-4 font-bold focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                  className="w-full bg-surface-1 border border-hairline rounded-xl py-3 pl-9 pr-4 font-bold focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                   placeholder="65"
                   required
                   autoFocus
@@ -122,15 +122,15 @@ export const ApplyModal: React.FC<Props> = ({ job, onClose, onApplied }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-white/70 ml-1">
-                Message <span className="text-white/30 font-normal">(optional)</span>
+              <label className="text-sm font-medium text-body ml-1">
+                Message <span className="text-faint font-normal">(optional)</span>
               </label>
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
                 maxLength={500}
-                className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
+                className="w-full bg-surface-1 border border-hairline rounded-xl py-3 px-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all"
                 placeholder="Tell them why you're a good fit, and when you could come."
               />
             </div>

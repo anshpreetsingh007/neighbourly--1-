@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
@@ -7,6 +7,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
 import { clsx } from 'clsx';
+import { saveJobDraft, loadJobDraft, clearJobDraft } from '../../lib/jobDraft';
+import { basemapFor } from '../../lib/basemap';
+import { useTheme } from '../../contexts/ThemeContext';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -33,25 +36,73 @@ export const PostJob: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [step, setStep] = useState(1);
+  const { theme } = useTheme();
+  const basemap = basemapFor(theme);
+  // Read once, synchronously, so the first render already has the saved values
+  // instead of flashing an empty form and then filling it in.
+  const [restoredDraft] = useState(() => loadJobDraft());
+  const [wasRestored, setWasRestored] = useState(false);
+  const [step, setStep] = useState(() => restoredDraft?.step ?? 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
-  const [coords, setCoords] = useState<[number, number]>([40.7128, -74.0060]);
-  const [formData, setFormData] = useState({
-    title: '',
-    category: '',
-    description: '',
-    urgency: 'Flexible',
-    photos: [] as string[],
-    location: '',
-    budget: [50, 200],
-  });
+  const [coords, setCoords] = useState<[number, number]>(
+    restoredDraft?.coords ?? [40.7128, -74.0060]
+  );
+  const [formData, setFormData] = useState(
+    restoredDraft?.formData ?? {
+      title: '',
+      category: '',
+      description: '',
+      urgency: 'Flexible',
+      photos: [] as string[],
+      location: '',
+      budget: [50, 200],
+    }
+  );
 
   const [isUploading, setIsUploading] = useState(false);
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Tell the user why they landed mid-form - otherwise a half-filled step 2
+  // looks like a bug.
+  // A ref, not state: React StrictMode runs effects twice on mount in dev, and
+  // the second run closes over the pre-update state, so a state flag fires the
+  // toast twice. A ref mutates immediately and is seen by both runs.
+  const announcedRestore = useRef(false);
+  useEffect(() => {
+    if (restoredDraft && !announcedRestore.current) {
+      announcedRestore.current = true;
+      setWasRestored(true);
+      showToast('Picked up where you left off.');
+    }
+  }, [restoredDraft, showToast]);
+
+  // Autosave. Step 4 is the success screen, which is not resumable.
+  useEffect(() => {
+    if (step >= 4) return;
+    saveJobDraft({ step, coords, formData });
+  }, [step, coords, formData]);
+
+  const handleStartOver = () => {
+    clearJobDraft();
+    setFormData({
+      title: '',
+      category: '',
+      description: '',
+      urgency: 'Flexible',
+      photos: [],
+      location: '',
+      budget: [50, 200],
+    });
+    setCoords([40.7128, -74.0060]);
+    setStep(1);
+    setStepError(null);
+    setWasRestored(false);
+    showToast('Started a new job post.');
+  };
 
   const fetchSuggestions = async (query: string) => {
     if (query.length < 3) {
@@ -181,7 +232,8 @@ export const PostJob: React.FC = () => {
           photos: formData.photos
         });
         
-        console.log('Job posted successfully:', res.data);
+        clearJobDraft();
+        setWasRestored(false);
         setStep(4);
       } catch (err) {
         console.error('Failed to post job:', err);
@@ -210,18 +262,18 @@ export const PostJob: React.FC = () => {
             className="space-y-6"
           >
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Job Title</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Job Title</label>
               <input
                 type="text"
                 value={formData.title}
                 onChange={e => setFormData({ ...formData, title: e.target.value })}
-                className="w-full glass rounded-xl py-4 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-white"
+                className="w-full glass rounded-xl py-4 px-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-strong"
                 placeholder="What do you need help with?"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Category</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Category</label>
               <div className="grid grid-cols-4 gap-3">
                 {CATEGORIES.map(cat => (
                   <button
@@ -229,7 +281,7 @@ export const PostJob: React.FC = () => {
                     onClick={() => setFormData({ ...formData, category: cat.id })}
                     className={clsx(
                       "flex flex-col items-center gap-2 p-3 rounded-xl transition-all",
-                      formData.category === cat.id ? "bg-amber-accent text-slate-900" : "glass hover:bg-white/10"
+                      formData.category === cat.id ? "bg-amber-accent text-slate-900" : "glass hover:bg-surface-2"
                     )}
                   >
                     <span className="text-2xl">{cat.icon}</span>
@@ -240,7 +292,7 @@ export const PostJob: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Urgency</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Urgency</label>
               <div className="flex gap-3">
                 {['Flexible', 'This Week', 'ASAP'].map(u => (
                   <button
@@ -248,7 +300,7 @@ export const PostJob: React.FC = () => {
                     onClick={() => setFormData({ ...formData, urgency: u })}
                     className={clsx(
                       "flex-1 py-3 rounded-xl text-sm font-bold transition-all",
-                      formData.urgency === u ? "bg-amber-accent text-slate-900" : "glass hover:bg-white/10"
+                      formData.urgency === u ? "bg-amber-accent text-slate-900" : "glass hover:bg-surface-2"
                     )}
                   >
                     {u}
@@ -267,39 +319,39 @@ export const PostJob: React.FC = () => {
             className="space-y-6"
           >
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Description</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Description</label>
               <textarea
                 value={formData.description}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
-                className="w-full glass rounded-xl py-4 px-4 h-32 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-white"
+                className="w-full glass rounded-xl py-4 px-4 h-32 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-strong"
                 placeholder="Describe the job in detail..."
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Photos</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Photos</label>
               <div className="grid grid-cols-3 gap-3">
                 {formData.photos.map((url, index) => (
-                  <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-white/10">
+                  <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-hairline">
                     <img src={url} alt="Job" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     <button 
                       onClick={() => setFormData(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))}
                       className="absolute top-1 right-1 bg-rose-status p-1 rounded-lg shadow-lg"
                     >
-                      <CloseIcon className="w-3 h-3 text-white" />
+                      <CloseIcon className="w-3 h-3 text-strong" />
                     </button>
                   </div>
                 ))}
                 
                 {formData.photos.length < 6 && (
-                  <label className="aspect-square glass rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 hover:border-amber-accent/50 transition-all cursor-pointer">
+                  <label className="aspect-square glass rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed border-hairline hover:border-amber-accent/50 transition-all cursor-pointer">
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
                     {isUploading ? (
                       <div className="w-6 h-6 border-2 border-amber-accent border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>
-                        <Camera className="w-6 h-6 text-white/30" />
-                        <span className="text-[10px] font-bold text-white/30 uppercase">Add Photo</span>
+                        <Camera className="w-6 h-6 text-faint" />
+                        <span className="text-[10px] font-bold text-faint uppercase">Add Photo</span>
                       </>
                     )}
                   </label>
@@ -318,9 +370,9 @@ export const PostJob: React.FC = () => {
             className="space-y-6"
           >
             <div className="space-y-2 relative">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Location</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Location</label>
               <div className="relative">
-                <MapPin className={clsx("absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors", isGeocoding ? "text-amber-accent animate-pulse" : "text-white/30")} />
+                <MapPin className={clsx("absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors", isGeocoding ? "text-amber-accent animate-pulse" : "text-faint")} />
                 <input
                   type="text"
                   value={formData.location}
@@ -329,7 +381,7 @@ export const PostJob: React.FC = () => {
                     setShowSuggestions(true);
                   }}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  className="w-full glass rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-white"
+                  className="w-full glass rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 text-strong"
                   placeholder="Street address or neighbourhood"
                 />
               </div>
@@ -341,47 +393,47 @@ export const PostJob: React.FC = () => {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute z-[100] w-full mt-2 glass rounded-xl overflow-hidden shadow-2xl border border-white/10"
+                    className="absolute z-[100] w-full mt-2 glass rounded-xl overflow-hidden shadow-2xl border border-hairline"
                   >
                     {suggestions.map((s, i) => (
                       <button
                         key={i}
                         onClick={() => handleSelectSuggestion(s)}
-                        className="w-full text-left p-4 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0 text-sm"
+                        className="w-full text-left p-4 hover:bg-surface-2 transition-colors border-b border-hairline last:border-0 text-sm"
                       >
-                        <p className="font-bold text-white truncate">{s.display_name}</p>
+                        <p className="font-bold text-strong truncate">{s.display_name}</p>
                       </button>
                     ))}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <div className="h-48 rounded-2xl overflow-hidden border border-white/10 glass">
+              <div className="h-48 rounded-2xl overflow-hidden border border-hairline glass">
                 <MapContainer 
                   center={coords} 
                   zoom={15} 
                   style={{ height: '100%', width: '100%' }}
                   zoomControl={false}
                 >
-                  <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+                  <TileLayer key={theme} url={basemap.url} attribution={basemap.attribution} />
                   <Marker position={coords} icon={L.divIcon({ className: 'p-2 bg-amber-accent rounded-full border-4 border-slate-900', iconSize: [12, 12] })} />
                   <MapPreview center={coords} />
                 </MapContainer>
               </div>
-              <p className="text-[10px] text-white/30 font-bold uppercase text-center tracking-widest">Pin shows the exact location that will be posted</p>
+              <p className="text-[10px] text-faint font-bold uppercase text-center tracking-widest">Pin shows the exact location that will be posted</p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-white/70 uppercase tracking-wider">Budget Range</label>
+              <label className="text-sm font-bold text-body uppercase tracking-wider">Budget Range</label>
               <div className="glass p-6 rounded-xl space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[0]}</span>
-                  <span className="text-white/30">—</span>
+                  <span className="text-faint">—</span>
                   <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[1]}</span>
                 </div>
                 <div className="space-y-6">
                   <div className="flex flex-col gap-2">
-                    <span className="text-[10px] uppercase font-black text-white/20 tracking-widest">Maximum Budget</span>
+                    <span className="text-[10px] uppercase font-black text-faint tracking-widest">Maximum Budget</span>
                     <input 
                       type="range" 
                       className="w-full accent-amber-accent"
@@ -410,7 +462,7 @@ export const PostJob: React.FC = () => {
               </div>
             </div>
             <h2 className="text-3xl font-display font-bold">Job Posted!</h2>
-            <p className="text-white/50">Your job is now visible to helpers in your area. We'll notify you when you get applicants.</p>
+            <p className="text-muted">Your job is now visible to helpers in your area. We'll notify you when you get applicants.</p>
             <Button className="w-full" onClick={() => navigate('/')}>View Your Job</Button>
           </motion.div>
         );
@@ -422,12 +474,21 @@ export const PostJob: React.FC = () => {
   return (
     <div className="p-6 min-h-screen flex flex-col">
       <header className="flex items-center justify-between mb-8">
-        <button onClick={() => navigate(-1)} className="p-2 glass rounded-xl">
+        <button onClick={() => navigate("/")} className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-display font-bold">Post a Job</h1>
         <div className="w-10" /> {/* Spacer */}
       </header>
+
+      {wasRestored && step < 4 && (
+        <button
+          onClick={handleStartOver}
+          className="self-end -mt-4 mb-4 text-xs font-bold uppercase tracking-widest text-muted hover:text-strong transition-colors"
+        >
+          Start over
+        </button>
+      )}
 
       {step < 4 && (
         <div className="flex gap-2 mb-8">
@@ -436,14 +497,17 @@ export const PostJob: React.FC = () => {
               key={s} 
               className={clsx(
                 "h-1.5 flex-1 rounded-full transition-all duration-500",
-                s <= step ? "bg-amber-accent" : "bg-white/10"
+                s <= step ? "bg-amber-accent" : "bg-surface-2"
               )} 
             />
           ))}
         </div>
       )}
 
-      <div className="flex-1">
+      {/* Not flex-1: that stretched this wrapper to fill the screen and pinned
+          the step buttons to the bottom, leaving a dead gap on the short steps.
+          Letting it size to its content keeps Continue just below the fields. */}
+      <div>
         <AnimatePresence mode="wait">
           {renderStep()}
         </AnimatePresence>
@@ -456,15 +520,23 @@ export const PostJob: React.FC = () => {
               {stepError}
             </div>
           )}
-          <div className="mt-8 flex gap-4">
+          <div className="mt-8 flex gap-3 justify-end">
             {step > 1 && (
-              <Button variant="secondary" className="flex-1" onClick={prevStep}>
+              <Button variant="secondary" className="rounded-full px-6 text-muted" onClick={prevStep}>
                 Back
               </Button>
             )}
-            <Button className="flex-1" onClick={nextStep} isLoading={isSubmitting}>
+            {/* Glass pill rather than a solid amber block: amber already means
+                "selected" on this form (category, urgency), so a filled amber
+                button read as another chosen chip instead of an action. */}
+            <Button
+              variant="secondary"
+              className="rounded-full px-7 font-bold"
+              onClick={nextStep}
+              isLoading={isSubmitting}
+            >
               {step === 3 ? 'Post Job' : 'Continue'}
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-5 h-5 text-amber-accent" />
             </Button>
           </div>
         </>
