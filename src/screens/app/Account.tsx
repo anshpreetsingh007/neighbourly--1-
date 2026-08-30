@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { useTheme, type ThemePreference } from '../../contexts/ThemeContext';
 import { GlassCard, Button } from '../../components/UI';
+import { Avatar } from '../../components/Avatar';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import {
@@ -15,8 +16,7 @@ import {
   LogOut,
   ChevronRight,
   Star,
-  Briefcase,
-  Smartphone,
+  Briefcase,
   Sun,
   Moon,
   Monitor
@@ -42,16 +42,23 @@ export const Account: React.FC = () => {
     fetchProfile();
   }, [user]);
 
+  // Settings and Notifications are real pages. Payments and ID Verification
+  // are real roadmap items (the schema already has stripe_customer_id and
+  // is_id_verified) but need a Stripe/KYC vendor wired up before they can do
+  // anything - so they say so honestly instead of pretending to work.
   const menuItems = [
-    { icon: Settings, label: 'Settings', color: 'text-muted' },
-    { icon: Bell, label: 'Notifications', color: 'text-sky-status' },
-    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent' },
-    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status' },
-    { icon: Smartphone, label: 'Connected Devices', color: 'text-muted' },
+    { icon: Settings, label: 'Settings', color: 'text-muted', path: '/account/settings' },
+    { icon: Bell, label: 'Notifications', color: 'text-sky-status', path: '/account/notifications' },
+    { icon: CreditCard, label: 'Payments & Payouts', color: 'text-amber-accent', path: null },
+    { icon: ShieldCheck, label: 'ID Verification', color: 'text-emerald-status', path: null },
   ];
 
-  const handleMenuClick = (label: string) => {
-    showToast(`${label} isn't available yet - coming soon.`);
+  const handleMenuClick = (item: (typeof menuItems)[number]) => {
+    if (item.path) {
+      navigate(item.path);
+    } else {
+      showToast(`${item.label} isn't available yet - coming soon.`);
+    }
   };
 
   return (
@@ -59,12 +66,12 @@ export const Account: React.FC = () => {
       {/* Profile Header */}
       <section className="flex flex-col items-center text-center space-y-4">
         <div className="relative">
-          <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-hairline shadow-2xl">
-            <img 
-              src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/200/200"} 
-              alt="Profile" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
+          <div className="border-4 border-hairline shadow-2xl rounded-[40px]">
+            <Avatar
+              name={profile?.name || user?.user_metadata?.full_name}
+              avatarUrl={profile?.avatar_url || user?.user_metadata?.avatar_url}
+              seed={user?.id}
+              size="profile"
             />
           </div>
           {profile?.is_id_verified && (
@@ -73,9 +80,9 @@ export const Account: React.FC = () => {
             </div>
           )}
         </div>
-        
+
         <div>
-          <h1 className="text-3xl font-display font-bold">{user?.user_metadata?.full_name || profile?.name || 'Neighbour'}</h1>
+          <h1 className="text-3xl font-display font-bold">{profile?.name || user?.user_metadata?.full_name || 'Neighbour'}</h1>
           <p className="text-muted font-medium">
             {profile?.neighbourhood || 'Neighbourhood not set'} • Member since {new Date(user?.created_at || Date.now()).getFullYear()}
           </p>
@@ -83,16 +90,20 @@ export const Account: React.FC = () => {
 
         <div className="flex gap-4 w-full">
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-amber-accent">4.9</span>
+            <span className="text-2xl font-display font-bold text-amber-accent">
+              {profile?.avg_rating ? profile.avg_rating.toFixed(1) : '—'}
+            </span>
             <div className="flex gap-0.5">
               {[1,2,3,4,5].map(i => <Star key={i} className="w-3 h-3 fill-amber-accent text-amber-accent" />)}
             </div>
-            <span className="text-[10px] font-bold text-faint uppercase">Rating</span>
+            <span className="text-[10px] font-bold text-faint uppercase">
+              {profile?.reviews_count ? `${profile.reviews_count} Reviews` : 'No Ratings Yet'}
+            </span>
           </GlassCard>
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-sky-status">24</span>
+            <span className="text-2xl font-display font-bold text-sky-status">{profile?.jobs_posted_count ?? 0}</span>
             <Briefcase className="w-4 h-4 text-sky-status" />
-            <span className="text-[10px] font-bold text-faint uppercase">Jobs Done</span>
+            <span className="text-[10px] font-bold text-faint uppercase">Jobs Posted</span>
           </GlassCard>
         </div>
       </section>
@@ -155,7 +166,7 @@ export const Account: React.FC = () => {
           >
             <button
               type="button"
-              onClick={() => handleMenuClick(item.label)}
+              onClick={() => handleMenuClick(item)}
               className="flex-1 flex items-center justify-between text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50 rounded-xl"
             >
               <div className="flex items-center gap-4">
@@ -171,8 +182,8 @@ export const Account: React.FC = () => {
       </section>
 
       {/* Logout */}
-      <Button 
-        variant="danger" 
+      <Button
+        variant="danger"
         className="w-full py-4 rounded-2xl gap-3"
         onClick={signOut}
       >
@@ -181,7 +192,7 @@ export const Account: React.FC = () => {
       </Button>
 
       <div className="text-center space-y-1">
-        <p className="text-[10px] font-bold text-faint uppercase tracking-widest">Neighbourly v1.0.4</p>
+        <p className="text-[10px] font-bold text-faint uppercase tracking-widest">Neighbourly</p>
         <p className="text-[10px] font-bold text-faint uppercase tracking-widest">Made with ❤️ for the community</p>
       </div>
     </div>

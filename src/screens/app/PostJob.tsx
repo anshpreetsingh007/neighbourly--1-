@@ -7,22 +7,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
 import { clsx } from 'clsx';
-import { saveJobDraft, loadJobDraft, clearJobDraft } from '../../lib/jobDraft';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import { basemapFor } from '../../lib/basemap';
 import { useTheme } from '../../contexts/ThemeContext';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { saveJobDraft, loadJobDraft, clearJobDraft } from '../../lib/jobDraft';
 import L from 'leaflet';
-
-const CATEGORIES = [
-  { id: 'snow', name: 'Snow Removal', icon: '❄️' },
-  { id: 'plumbing', name: 'Plumbing', icon: '🚰' },
-  { id: 'electrical', name: 'Electrical', icon: '⚡' },
-  { id: 'cleaning', name: 'Cleaning', icon: '🧹' },
-  { id: 'moving', name: 'Moving', icon: '📦' },
-  { id: 'painting', name: 'Painting', icon: '🎨' },
-  { id: 'landscaping', name: 'Landscaping', icon: '🌿' },
-  { id: 'oddjobs', name: 'Odd Jobs', icon: '🛠️' },
-];
+import { CATEGORIES } from '../../lib/categories';
 
 const MapPreview = ({ center }: { center: [number, number] }) => {
   const map = useMap();
@@ -38,6 +28,7 @@ export const PostJob: React.FC = () => {
   const { showToast } = useToast();
   const { theme } = useTheme();
   const basemap = basemapFor(theme);
+
   // Read once, synchronously, so the first render already has the saved values
   // instead of flashing an empty form and then filling it in.
   const [restoredDraft] = useState(() => loadJobDraft());
@@ -66,8 +57,6 @@ export const PostJob: React.FC = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Tell the user why they landed mid-form - otherwise a half-filled step 2
-  // looks like a bug.
   // A ref, not state: React StrictMode runs effects twice on mount in dev, and
   // the second run closes over the pre-update state, so a state flag fires the
   // toast twice. A ref mutates immediately and is seen by both runs.
@@ -161,13 +150,13 @@ export const PostJob: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign');
+      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_jobs' });
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
       formDataUpload.append('api_key', signData.api_key);
       formDataUpload.append('timestamp', signData.timestamp);
       formDataUpload.append('signature', signData.signature);
-      formDataUpload.append('folder', 'neighbourly_jobs');
+      formDataUpload.append('folder', signData.folder);
 
       const { data: uploadData } = await axios.post(
         `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
@@ -216,10 +205,7 @@ export const PostJob: React.FC = () => {
 
       setIsSubmitting(true);
       try {
-        const res = await axios.post('/api/jobs', {
-          poster_id: user.id,
-          poster_email: user.email,
-          poster_name: user.user_metadata?.full_name || 'Anonymous',
+        await axios.post('/api/jobs', {
           title: formData.title,
           category: formData.category,
           description: formData.description,
@@ -231,7 +217,7 @@ export const PostJob: React.FC = () => {
           budget_max: formData.budget[1],
           photos: formData.photos
         });
-        
+
         clearJobDraft();
         setWasRestored(false);
         setStep(4);
@@ -425,25 +411,53 @@ export const PostJob: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-bold text-body uppercase tracking-wider">Budget Range</label>
-              <div className="glass p-6 rounded-xl space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[0]}</span>
-                  <span className="text-faint">—</span>
-                  <span className="text-2xl font-display font-bold text-amber-accent">${formData.budget[1]}</span>
-                </div>
-                <div className="space-y-6">
+              <div className="glass p-6 rounded-xl space-y-6">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
-                    <span className="text-[10px] uppercase font-black text-faint tracking-widest">Maximum Budget</span>
-                    <input 
-                      type="range" 
-                      className="w-full accent-amber-accent"
-                      min="10"
-                      max="1000"
-                      step="10"
-                      value={formData.budget[1]}
-                      onChange={(e) => setFormData({ ...formData, budget: [formData.budget[0], parseInt(e.target.value)] })}
+                    <span className="text-[10px] uppercase font-black text-faint tracking-widest">Minimum ($)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={formData.budget[1]}
+                      step={5}
+                      value={formData.budget[0]}
+                      onChange={(e) => {
+                        const value = Math.max(0, Math.min(parseInt(e.target.value) || 0, formData.budget[1]));
+                        setFormData({ ...formData, budget: [value, formData.budget[1]] });
+                      }}
+                      className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
                     />
                   </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] uppercase font-black text-faint tracking-widest">Maximum ($)</span>
+                    <input
+                      type="number"
+                      min={formData.budget[0]}
+                      max={5000}
+                      step={5}
+                      value={formData.budget[1]}
+                      onChange={(e) => {
+                        const value = Math.max(formData.budget[0], parseInt(e.target.value) || formData.budget[0]);
+                        setFormData({ ...formData, budget: [formData.budget[0], value] });
+                      }}
+                      className="w-full glass rounded-xl py-3 px-4 text-2xl font-display font-bold text-amber-accent focus:outline-none focus:ring-2 focus:ring-amber-accent/50"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] uppercase font-black text-faint tracking-widest">Maximum Budget</span>
+                  <input
+                    type="range"
+                    className="w-full accent-amber-accent"
+                    min="10"
+                    max="1000"
+                    step="10"
+                    value={formData.budget[1]}
+                    onChange={(e) => {
+                      const value = Math.max(formData.budget[0], parseInt(e.target.value));
+                      setFormData({ ...formData, budget: [formData.budget[0], value] });
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -463,7 +477,7 @@ export const PostJob: React.FC = () => {
             </div>
             <h2 className="text-3xl font-display font-bold">Job Posted!</h2>
             <p className="text-muted">Your job is now visible to helpers in your area. We'll notify you when you get applicants.</p>
-            <Button className="w-full" onClick={() => navigate('/')}>View Your Job</Button>
+            <Button className="w-full" onClick={() => navigate('/my-jobs')}>View Your Job</Button>
           </motion.div>
         );
       default:
@@ -474,13 +488,16 @@ export const PostJob: React.FC = () => {
   return (
     <div className="p-6 min-h-screen flex flex-col">
       <header className="flex items-center justify-between mb-8">
-        <button onClick={() => navigate("/")} className="p-2 glass rounded-xl">
+        <button onClick={() => navigate(-1)} aria-label="Go back" className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-display font-bold">Post a Job</h1>
         <div className="w-10" /> {/* Spacer */}
       </header>
 
+      {/* Only shown when a draft was actually restored - without an escape
+          hatch, someone coming back to post a different job is stuck deleting
+          the old one field by field. */}
       {wasRestored && step < 4 && (
         <button
           onClick={handleStartOver}
@@ -504,10 +521,7 @@ export const PostJob: React.FC = () => {
         </div>
       )}
 
-      {/* Not flex-1: that stretched this wrapper to fill the screen and pinned
-          the step buttons to the bottom, leaving a dead gap on the short steps.
-          Letting it size to its content keeps Continue just below the fields. */}
-      <div>
+      <div className="flex-1">
         <AnimatePresence mode="wait">
           {renderStep()}
         </AnimatePresence>
@@ -520,23 +534,15 @@ export const PostJob: React.FC = () => {
               {stepError}
             </div>
           )}
-          <div className="mt-8 flex gap-3 justify-end">
+          <div className="mt-8 flex gap-4">
             {step > 1 && (
-              <Button variant="secondary" className="rounded-full px-6 text-muted" onClick={prevStep}>
+              <Button variant="secondary" className="flex-1" onClick={prevStep}>
                 Back
               </Button>
             )}
-            {/* Glass pill rather than a solid amber block: amber already means
-                "selected" on this form (category, urgency), so a filled amber
-                button read as another chosen chip instead of an action. */}
-            <Button
-              variant="secondary"
-              className="rounded-full px-7 font-bold"
-              onClick={nextStep}
-              isLoading={isSubmitting}
-            >
+            <Button className="flex-1" onClick={nextStep} isLoading={isSubmitting}>
               {step === 3 ? 'Post Job' : 'Continue'}
-              <ChevronRight className="w-5 h-5 text-amber-accent" />
+              <ChevronRight className="w-5 h-5" />
             </Button>
           </div>
         </>

@@ -10,6 +10,8 @@ import { PostJob } from './screens/app/PostJob';
 import { ChatList } from './screens/app/ChatList';
 import { ChatThread } from './screens/app/ChatThread';
 import { Account } from './screens/app/Account';
+import { Settings } from './screens/app/Settings';
+import { Notifications } from './screens/app/Notifications';
 import { MyJobs } from './screens/app/MyJobs';
 import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
@@ -92,7 +94,7 @@ export default function App() {
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/sign-in" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
-          
+
           {/* Protected Routes */}
           <Route path="/" element={
             <AuthGuard>
@@ -105,6 +107,8 @@ export default function App() {
             <Route path="chat" element={<ChatList />} />
             <Route path="chat/:id" element={<ChatThread />} />
             <Route path="account" element={<Account />} />
+            <Route path="account/settings" element={<Settings />} />
+            <Route path="account/notifications" element={<Notifications />} />
             <Route path="my-jobs" element={<MyJobs />} />
             <Route path="profile-setup" element={<ProfileSetup />} />
             {/* Add more routes here */}
@@ -121,4 +125,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-

@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { ApplyModal } from '../../components/ApplyModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2 } from 'lucide-react';
+import { Avatar } from '../../components/Avatar';
+import { JobThumbnail } from '../../components/JobThumbnail';
+import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
+import { CATEGORIES } from '../../lib/categories';
 
 /** date-fns throws on an invalid date, and a throw during render blanks the app. */
 const relativeTime = (value: unknown) => {
@@ -22,20 +25,20 @@ const relativeTime = (value: unknown) => {
   }
 };
 
-const CATEGORIES = [
-  { id: 'snow', name: 'Snow Removal' },
-  { id: 'plumbing', name: 'Plumbing' },
-  { id: 'electrical', name: 'Electrical' },
-  { id: 'cleaning', name: 'Cleaning' },
-  { id: 'moving', name: 'Moving' },
-  { id: 'painting', name: 'Painting' },
-  { id: 'landscaping', name: 'Landscaping' },
-  { id: 'oddjobs', name: 'Odd Jobs' },
-];
+const URGENCY_OPTIONS = ['FLEXIBLE', 'THIS WEEK', 'ASAP'];
+
+function timeOfDayGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 5) return 'Good Night';
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
+  return 'Good Evening';
+}
 
 export const Home: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [greeting] = useState(timeOfDayGreeting);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
@@ -47,6 +50,9 @@ export const Home: React.FC = () => {
   const [deletingJob, setDeletingJob] = useState<any | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: 'success' | 'warn' } | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [urgencyFilter, setUrgencyFilter] = useState<string | null>(null);
+  const [maxBudget, setMaxBudget] = useState(1000);
 
   const fetchJobs = async () => {
     setIsLoading(true);
@@ -74,7 +80,6 @@ export const Home: React.FC = () => {
   }, [user]);
 
   const handleStartChat = async (job: any) => {
-    console.log('handleStartChat called for job:', job.id);
     if (!user) {
         showNotice('Please sign in to message your neighbours.');
         return;
@@ -82,10 +87,7 @@ export const Home: React.FC = () => {
 
     try {
         // Find our user record first to get the internal ID
-        const { data: me } = await axios.get('/api/users/me', {
-            headers: { 'x-supabase-uid': user.id }
-        });
-        console.log('Current user record:', me);
+        const { data: me } = await axios.get('/api/users/me');
 
         if (!me || !me.id) {
             showNotice('Your profile is not set up yet. Finish it from Account.');
@@ -101,7 +103,6 @@ export const Home: React.FC = () => {
             job_id: job.id,
             participant_ids: [me.id, job.poster_id]
         });
-        console.log('Conversation ready:', conversation.id);
         navigate(`/chat/${conversation.id}`);
     } catch (err) {
         console.error('Failed to start chat:', err);
@@ -159,13 +160,24 @@ export const Home: React.FC = () => {
   };
 
   const filteredJobs = jobs.filter(job => {
-    const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          job.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || job.category.toLowerCase() === activeCategory.toLowerCase();
-    return matchesSearch && matchesCategory;
+    const matchesUrgency = !urgencyFilter || job.urgency === urgencyFilter;
+    const matchesBudget = (job.budget_min ?? 0) <= maxBudget;
+    return matchesSearch && matchesCategory && matchesUrgency && matchesBudget;
   });
 
-  const urgentJobs = jobs.filter(job => job.urgency === 'URGENT' || job.urgency === 'EMERGENCY');
+  const activeFilterCount = (urgencyFilter ? 1 : 0) + (maxBudget < 1000 ? 1 : 0);
+
+  const clearFilters = () => {
+    setUrgencyFilter(null);
+    setMaxBudget(1000);
+  };
+
+  // Matches what PostJob actually writes (FLEXIBLE / THIS WEEK / ASAP) - not
+  // URGENT/EMERGENCY, which nothing in this app ever produces.
+  const urgentJobs = jobs.filter(job => job.urgency === 'ASAP');
 
   return (
     <div className="p-6 md:p-10 space-y-10">
@@ -190,19 +202,23 @@ export const Home: React.FC = () => {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-muted text-[10px] font-black uppercase tracking-[0.2em] mb-1">Good Morning</h2>
+          <h2 className="text-muted text-[10px] font-black uppercase tracking-[0.2em] mb-1">{greeting}</h2>
           <h1 className="text-3xl md:text-4xl font-display font-bold text-strong tracking-tight">
             {user?.user_metadata?.full_name?.split(' ')[0] || 'Neighbour'}
           </h1>
         </div>
-        <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-hairline shadow-2xl transition-transform hover:scale-110 cursor-pointer">
-          <img 
-            src={user?.user_metadata?.avatar_url || "https://picsum.photos/seed/user/100/100"} 
-            alt="Avatar" 
-            referrerPolicy="no-referrer" 
-            className="w-full h-full object-cover"
+        <button
+          onClick={() => navigate('/account')}
+          className="rounded-2xl border-2 border-hairline shadow-2xl transition-transform hover:scale-110 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50"
+          aria-label="Go to account"
+        >
+          <Avatar
+            name={user?.user_metadata?.full_name}
+            avatarUrl={user?.user_metadata?.avatar_url}
+            seed={user?.id}
+            size="lg"
           />
-        </div>
+        </button>
       </header>
 
       {/* Search & Filter */}
@@ -219,13 +235,88 @@ export const Home: React.FC = () => {
         </div>
         <Button
           variant="secondary"
-          className="p-5 rounded-2xl border border-hairline opacity-50 cursor-not-allowed"
-          disabled
-          title="Filters are coming soon"
+          aria-label="Filters"
+          className="p-5 rounded-2xl border border-hairline relative"
+          onClick={() => setShowFilters(true)}
         >
           <Filter className="w-6 h-6" />
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">
+              {activeFilterCount}
+            </span>
+          )}
         </Button>
       </div>
+
+      {/* Filter Panel */}
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end md:items-center justify-center p-0 md:p-6"
+            onClick={() => setShowFilters(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="w-full md:max-w-md glass rounded-t-[2.5rem] md:rounded-[2rem] p-8 border border-hairline bg-[#0f1119]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-display font-bold">Filters</h3>
+                <button onClick={() => setShowFilters(false)} aria-label="Close filters" className="p-2 hover:bg-surface-2 rounded-xl transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <span className="text-[10px] uppercase font-black text-muted tracking-widest">Urgency</span>
+                  <div className="flex flex-wrap gap-2">
+                    {URGENCY_OPTIONS.map(u => (
+                      <button
+                        key={u}
+                        onClick={() => setUrgencyFilter(urgencyFilter === u ? null : u)}
+                        className={clsx(
+                          "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wide transition-all",
+                          urgencyFilter === u ? "bg-amber-accent text-slate-900" : "glass text-muted hover:text-body"
+                        )}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-black text-muted tracking-widest">Max Budget</span>
+                    <span className="text-amber-accent font-bold">${maxBudget}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="1000"
+                    step="10"
+                    value={maxBudget}
+                    onChange={(e) => setMaxBudget(parseInt(e.target.value))}
+                    className="w-full accent-amber-accent"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 mt-8">
+                <Button variant="secondary" className="flex-1" onClick={clearFilters}>Clear</Button>
+                <Button className="flex-1" onClick={() => setShowFilters(false)}>Show Results</Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Categories */}
       <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
@@ -368,17 +459,17 @@ export const Home: React.FC = () => {
               <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-hairline bg-surface-1">
                 <div className="flex gap-4">
                     <div className="relative shrink-0">
-                        <img 
-                            src={job.photos?.[0]?.url || `https://picsum.photos/seed/${job.id}/200/200`} 
-                            alt={job.title} 
-                            className="w-24 h-24 rounded-2xl object-cover ring-2 ring-white/5 shadow-2xl"
-                            referrerPolicy="no-referrer"
+                        <JobThumbnail
+                            photoUrl={job.photos?.[0]?.url}
+                            category={job.category}
+                            alt={job.title}
+                            className="w-24 h-24 rounded-2xl ring-2 ring-white/5 shadow-2xl"
                         />
-                        {job.urgency === 'URGENT' && (
+                        {job.urgency === 'ASAP' && (
                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-rose-status border-4 border-[#080a12] rounded-full shadow-lg" />
                         )}
                     </div>
-                    
+
                     <div className="flex-1 space-y-2">
                         <div className="flex items-start justify-between">
                             <h4 className="font-bold text-xl leading-tight tracking-tight">{job.title}</h4>
@@ -386,7 +477,7 @@ export const Home: React.FC = () => {
                                 ${job.budget_min} - ${job.budget_max}
                             </span>
                         </div>
-                        
+
                         <div className="flex items-center gap-4 text-[10px] text-muted font-bold uppercase tracking-wider">
                             <div className="flex items-center gap-1.5">
                                 <MapPin className="w-3.5 h-3.5 text-amber-accent" />
@@ -401,7 +492,7 @@ export const Home: React.FC = () => {
                         <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
                     </div>
                 </div>
-                
+
                 <div className="flex gap-3 pt-2 border-t border-hairline">
                     <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-hairline" onClick={() => handleStartChat(job)}>
                          <MessageSquare className="w-4 h-4 mr-2" /> Message
@@ -488,5 +579,3 @@ export const Home: React.FC = () => {
     </div>
   );
 };
-
-

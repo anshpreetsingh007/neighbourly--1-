@@ -58,7 +58,7 @@ export const Button: React.FC<ButtonProps> = ({
     <motion.button
       whileTap={{ scale: 0.95 }}
       className={cn(
-        "rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
+        "rounded-xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/70",
         variants[variant],
         sizes[size],
         className

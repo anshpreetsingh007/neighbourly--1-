@@ -5,11 +5,11 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-// Add auth interceptor. The API identifies users by Supabase UID, not a bearer token.
+// Add auth interceptor. The API verifies this signed access token server-side.
 api.interceptors.request.use(async (config) => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session?.user) {
-    config.headers['x-supabase-uid'] = session.user.id;
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
   }
   return config;
 });

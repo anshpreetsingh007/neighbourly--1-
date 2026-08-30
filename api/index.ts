@@ -316,8 +316,9 @@ async function startServer() {
     socket.on('send_message', async (data) => {
       // sender_id is deliberately NOT read from the payload - the sender is
       // whoever authenticated at handshake.
-      const { conversation_id, body } = data || {};
-      if (!conversation_id || !body) return;
+      const { conversation_id, body, photo_url } = data || {};
+      const trimmedBody = typeof body === 'string' ? body.trim() : '';
+      if (!conversation_id || (!trimmedBody && !photo_url)) return;
 
       try {
         if (!(await isParticipant(conversation_id, me.id))) {
@@ -329,14 +330,52 @@ async function startServer() {
           data: {
             conversation_id,
             sender_id: me.id,
-            body,
-            type: 'TEXT'
+            body: trimmedBody,
+            photo_url: photo_url || null,
+            type: photo_url ? 'IMAGE' : 'TEXT'
           },
           include: { sender: { select: PUBLIC_USER_SELECT } }
         });
         chatNamespace.to(conversation_id).emit('receive_message', message);
+
+        // Notify the other participant(s) in the conversation.
+        const conversation = await prisma.conversation.findUnique({ where: { id: conversation_id } });
+        if (conversation) {
+          const recipientIds = conversation.participant_ids.split(',').filter(id => id && id !== me.id);
+          for (const recipientId of recipientIds) {
+            const notification = await prisma.notification.create({
+              data: {
+                user_id: recipientId,
+                type: 'MESSAGE',
+                title: `New message from ${me.name || 'a neighbour'}`,
+                body: trimmedBody
+                  ? (trimmedBody.length > 120 ? `${trimmedBody.slice(0, 120)}...` : trimmedBody)
+                  : 'Sent a photo',
+                data: JSON.stringify({ conversation_id })
+              }
+            });
+            notificationNamespace.to(recipientId).emit('notification', notification);
+          }
+        }
       } catch (err) {
         console.error('Failed to save message:', err);
+      }
+    });
+
+    // Marks every message the caller received (not sent) in this conversation
+    // as read, and tells the room so the sender's checkmarks can update live.
+    socket.on('mark_read', async (conversationId: string) => {
+      if (!(await isParticipant(conversationId, me.id))) return;
+      try {
+        const { count } = await prisma.message.updateMany({
+          where: { conversation_id: conversationId, sender_id: { not: me.id }, read_at: null },
+          data: { read_at: new Date() },
+        });
+        if (count > 0) {
+          chatNamespace.to(conversationId).emit('messages_read', { conversation_id: conversationId, reader_id: me.id });
+        }
+      } catch (err) {
+        console.error('Failed to mark messages read:', err);
       }
     });
 
@@ -563,6 +602,23 @@ async function startServer() {
         prisma.job.update({ where: { id: job_id }, data: { status: 'ASSIGNED' } }),
       ]);
 
+      // Let the hired helper know. Everyone else who applied just sees their
+      // status flip to REJECTED next time they look, which needs no push.
+      const sortedIds = [application.helper_id, job.poster_id].sort().join(',');
+      const conversation = await prisma.conversation.findFirst({
+        where: { job_id, participant_ids: sortedIds },
+      });
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: application.helper_id,
+          type: 'HIRED',
+          title: "You're hired!",
+          body: `${me.name || 'The poster'} accepted your application for "${job.title}"`,
+          data: JSON.stringify({ job_id, conversation_id: conversation?.id })
+        }
+      });
+      notificationNamespace.to(application.helper_id).emit('notification', notification);
+
       res.json({ application: accepted });
     } catch (err) {
       console.error('Failed to accept application:', err);
@@ -594,7 +650,19 @@ async function startServer() {
   app.get('/api/users/me', requireAuth, async (req, res) => {
     try {
       const user = currentUser(req);
-      res.json(user);
+
+      const [jobs_posted_count, reviews_count, ratingAgg] = await Promise.all([
+        prisma.job.count({ where: { poster_id: user.id } }),
+        prisma.review.count({ where: { reviewee_id: user.id } }),
+        prisma.review.aggregate({ where: { reviewee_id: user.id }, _avg: { rating: true } })
+      ]);
+
+      res.json({
+        ...user,
+        jobs_posted_count,
+        reviews_count,
+        avg_rating: ratingAgg._avg.rating
+      });
     } catch (err) {
       console.error('Failed to fetch/sync user:', err);
       res.status(500).json({ error: 'Failed to fetch user' });
@@ -604,7 +672,7 @@ async function startServer() {
   app.post('/api/users/profile', requireAuth, async (req, res) => {
     // Identity comes from the token; only profile fields are taken from the body.
     const authUser = authed(req);
-    const { first_name, last_name, neighbourhood, avatar_url } = req.body;
+    const { first_name, last_name, neighbourhood, avatar_url, bio } = req.body;
 
     const first = typeof first_name === 'string' ? first_name.trim() : '';
     const last = typeof last_name === 'string' ? last_name.trim() : '';
@@ -618,7 +686,7 @@ async function startServer() {
     try {
       const user = await prisma.user.upsert({
         where: { supabase_uid: authUser.id },
-        update: { first_name: first, last_name: last || null, name, neighbourhood, avatar_url },
+        update: { first_name: first, last_name: last || null, name, neighbourhood, avatar_url, bio },
         create: {
           supabase_uid: authUser.id,
           email: authUser.email || `user_${authUser.id.slice(0, 8)}@example.com`,
@@ -626,13 +694,51 @@ async function startServer() {
           last_name: last || null,
           name,
           neighbourhood,
-          avatar_url
+          avatar_url,
+          bio
         },
       });
       res.json(user);
     } catch (err) {
       console.error('Profile update failed:', err);
       res.status(500).json({ error: 'Failed to update profile' });
+    }
+  });
+
+  // Notifications API
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    try {
+      const user = currentUser(req);
+      const notifications = await prisma.notification.findMany({
+        where: { user_id: user.id },
+        orderBy: { created_at: 'desc' }
+      });
+      res.json(notifications);
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+      res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      const user = currentUser(req);
+
+      // Ownership must be checked before mutating: without this, any signed-in
+      // user could mark any other user's notification as read just by guessing an id.
+      const notification = await prisma.notification.findUnique({ where: { id: req.params.id } });
+      if (!notification || notification.user_id !== user.id) {
+        return res.status(404).json({ error: 'Notification not found' });
+      }
+
+      const updated = await prisma.notification.update({
+        where: { id: req.params.id },
+        data: { read_at: new Date() }
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+      res.status(500).json({ error: 'Failed to mark notification read' });
     }
   });
 
@@ -802,6 +908,18 @@ async function startServer() {
         }
       });
 
+      // Notify the job poster
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: job.poster_id,
+          type: 'APPLICATION',
+          title: 'New applicant',
+          body: `${helper.name || 'Someone'} applied to your job "${job.title}"`,
+          data: JSON.stringify({ job_id, conversation_id: conversation.id })
+        }
+      });
+      notificationNamespace.to(job.poster_id).emit('notification', notification);
+
       res.status(201).json({ application, conversation_id: conversation.id });
     } catch (err: any) {
       console.error('Failed to apply:', err);
@@ -809,22 +927,62 @@ async function startServer() {
     }
   });
 
+  // Reports API
+  const REPORT_TARGET_TYPES = new Set(['USER', 'JOB', 'MESSAGE']);
+
+  app.post('/api/reports', requireAuth, async (req, res) => {
+    const { target_type, target_id, reason } = req.body;
+
+    if (!REPORT_TARGET_TYPES.has(target_type) || typeof target_id !== 'string' || !target_id) {
+      return res.status(400).json({ error: 'Invalid report target' });
+    }
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return res.status(400).json({ error: 'A reason is required' });
+    }
+
+    try {
+      const me = currentUser(req);
+      const report = await prisma.report.create({
+        data: {
+          reporter_id: me.id,
+          target_type,
+          target_id,
+          reason: reason.trim(),
+        },
+      });
+      res.status(201).json(report);
+    } catch (err) {
+      console.error('Failed to create report:', err);
+      res.status(500).json({ error: 'Failed to submit report' });
+    }
+  });
+
   // Cloudinary Signing API
+  const UPLOAD_FOLDERS = new Set(['neighbourly_jobs', 'neighbourly_avatars', 'neighbourly_chat']);
+
   app.post('/api/uploads/sign', requireAuth, (req, res) => {
     if (!process.env.CLOUDINARY_API_SECRET || !process.env.CLOUDINARY_CLOUD_NAME) {
       console.error('Cannot sign upload: Cloudinary credentials are missing.');
       return res.status(503).json({ error: 'Uploads are not configured on the server' });
     }
 
+    // The signature covers whichever folder is actually used - Cloudinary
+    // recomputes it over the params it receives, so a mismatch here (e.g.
+    // always signing "neighbourly_jobs" while the client uploads to
+    // "neighbourly_avatars") makes every non-matching upload fail silently
+    // with an invalid-signature error.
+    const folder = UPLOAD_FOLDERS.has(req.body?.folder) ? req.body.folder : 'neighbourly_jobs';
+
     const timestamp = Math.round(new Date().getTime() / 1000);
     const signature = cloudinary.utils.api_sign_request(
-      { timestamp, folder: 'neighbourly_jobs' },
+      { timestamp, folder },
       process.env.CLOUDINARY_API_SECRET
     );
 
     res.json({
       signature,
       timestamp,
+      folder,
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
     });
@@ -839,7 +997,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else if (!process.env.VERCEL) {
-    // Only serve static files if NOT on Vercel. 
+    // Only serve static files if NOT on Vercel.
     // Vercel serves the 'dist' folder automatically from its global CDN.
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

@@ -99,6 +99,19 @@ body {
 }
 
 
+/* Keyboard focus indicator. Most buttons in this app are raw <button>
+   elements with their own bespoke rounded shapes rather than the shared
+   Button component, so a single global rule is what actually makes every
+   one of them show up for keyboard navigation instead of just a handful. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-amber-accent);
+  outline-offset: 2px;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
