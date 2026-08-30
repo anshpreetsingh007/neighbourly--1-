@@ -75,7 +75,7 @@ export const Account: React.FC = () => {
             />
           </div>
           {profile?.is_id_verified && (
-            <div className="absolute -bottom-2 -right-2 bg-emerald-status p-2 rounded-2xl shadow-lg border-4 border-[#1a1a2e]">
+            <div className="absolute -bottom-2 -right-2 bg-emerald-status p-2 rounded-2xl shadow-lg border-4 border-panel">
               <ShieldCheck className="w-5 h-5 text-slate-900" />
             </div>
           )}

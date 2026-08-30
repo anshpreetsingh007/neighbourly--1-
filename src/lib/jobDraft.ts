@@ -19,6 +19,13 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export interface JobDraft {
   step: number;
   coords: [number, number];
+  /**
+   * Whether the saved location text was actually resolved to these coordinates.
+   * Stored explicitly because "there is text in the field" says nothing about
+   * whether it geocoded - assuming it did let unconfirmed addresses through
+   * simply by leaving the form and coming back.
+   */
+  locationConfirmed?: boolean;
   formData: {
     title: string;
     category: string;

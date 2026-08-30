@@ -435,6 +435,27 @@ async function startServer() {
       photos
     } = req.body;
 
+    // Coordinates drive the whole board - distance labels, the map, "near me".
+    // A job at 0,0 or with no coordinates at all is worse than no job, so this
+    // rejects rather than silently falling back to a default like the client
+    // used to. Belt and braces alongside the address confirmation in PostJob.
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+    const hasRealCoords =
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      Math.abs(latitude) <= 90 &&
+      Math.abs(longitude) <= 180 &&
+      // Null Island: the classic signature of a failed geocode.
+      !(Math.abs(latitude) < 0.0001 && Math.abs(longitude) < 0.0001);
+
+    if (!hasRealCoords) {
+      return res.status(400).json({ error: 'Pick a real address so neighbours can find the job' });
+    }
+    if (typeof address !== 'string' || !address.trim()) {
+      return res.status(400).json({ error: 'A location is required' });
+    }
+
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
       const user = currentUser(req);
@@ -446,8 +467,8 @@ async function startServer() {
           category,
           description,
           urgency,
-          lat: parseFloat(lat) || 0,
-          lng: parseFloat(lng) || 0,
+          lat: latitude,
+          lng: longitude,
           address,
           budget_min: parseFloat(budget_min) || 0,
           budget_max: parseFloat(budget_max) || 0,
@@ -501,6 +522,102 @@ async function startServer() {
    * erased. Cancelled jobs drop out of every feed, so it looks like a delete
    * to the poster while preserving the other side's history.
    */
+  /**
+   * Edit a job you posted.
+   *
+   * Title, description, category, urgency and photos are always editable. The
+   * budget and the location are not, once anyone has applied: people bid
+   * against a stated price and applied because of where it was, so quietly
+   * moving either invalidates their offer. Delete works the same way.
+   */
+  app.patch('/api/jobs/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const me = currentUser(req);
+
+      const job = await prisma.job.findUnique({
+        where: { id },
+        include: { _count: { select: { applications: true } } },
+      });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res.status(403).json({ error: 'You can only edit jobs you posted' });
+      }
+      if (job.status !== 'OPEN') {
+        return res.status(409).json({ error: 'This job is no longer open, so it cannot be edited' });
+      }
+
+      const { title, description, category, urgency, photos } = req.body;
+      const data: Record<string, unknown> = {};
+
+      if (typeof title === 'string') {
+        if (!title.trim()) return res.status(400).json({ error: 'A title is required' });
+        data.title = title.trim();
+      }
+      if (typeof description === 'string') data.description = description;
+      if (typeof category === 'string' && category) data.category = category;
+      if (typeof urgency === 'string' && urgency) data.urgency = urgency;
+
+      const locked = job._count.applications > 0;
+      const wantsBudget = req.body.budget_min !== undefined || req.body.budget_max !== undefined;
+      const wantsMove = req.body.lat !== undefined || req.body.lng !== undefined ||
+        req.body.address !== undefined;
+
+      if (locked && (wantsBudget || wantsMove)) {
+        return res.status(409).json({
+          error: 'People have already applied, so the budget and location are fixed. Delete and repost to change them.',
+        });
+      }
+
+      if (wantsBudget) {
+        const min = parseFloat(req.body.budget_min);
+        const max = parseFloat(req.body.budget_max);
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min) {
+          return res.status(400).json({ error: 'Enter a valid budget range' });
+        }
+        data.budget_min = min;
+        data.budget_max = max;
+      }
+
+      if (wantsMove) {
+        // Same guard as creation: a job at 0,0 breaks every distance on the board.
+        const latitude = parseFloat(req.body.lat);
+        const longitude = parseFloat(req.body.lng);
+        const realCoords =
+          Number.isFinite(latitude) && Number.isFinite(longitude) &&
+          Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 &&
+          !(Math.abs(latitude) < 0.0001 && Math.abs(longitude) < 0.0001);
+
+        if (!realCoords || typeof req.body.address !== 'string' || !req.body.address.trim()) {
+          return res.status(400).json({ error: 'Pick a real address so neighbours can find the job' });
+        }
+        data.lat = latitude;
+        data.lng = longitude;
+        data.address = req.body.address;
+      }
+
+      // Photos are their own rows, so a change means replacing the set.
+      const replacePhotos = Array.isArray(photos);
+
+      const [updated] = await prisma.$transaction([
+        prisma.job.update({ where: { id }, data }),
+        ...(replacePhotos
+          ? [
+              prisma.jobPhoto.deleteMany({ where: { job_id: id } }),
+              prisma.jobPhoto.createMany({
+                data: photos.map((url: string, order: number) => ({ job_id: id, url, order })),
+              }),
+            ]
+          : []),
+      ]);
+
+      res.json(updated);
+    } catch (err) {
+      console.error('Failed to update job:', err);
+      res.status(500).json({ error: 'Failed to update this job' });
+    }
+  });
+
   app.delete('/api/jobs/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
     try {

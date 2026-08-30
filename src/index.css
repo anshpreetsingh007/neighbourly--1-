@@ -77,6 +77,9 @@
 @utility bg-surface-1 { background-color: var(--surface-1); }
 @utility bg-surface-2 { background-color: var(--surface-2); }
 @utility bg-panel { background-color: var(--panel-bg); }
+/* For the separator ring around badges that overlap an image - it should read
+   as the card punching through, so it has to follow the theme. */
+@utility border-panel { border-color: var(--panel-bg); }
 
 .glass {
   @apply backdrop-blur-md border;

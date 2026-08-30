@@ -229,7 +229,7 @@ export const MapView: React.FC = () => {
   };
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-[#080a12]">
+    <div className="relative h-screen w-full overflow-hidden bg-surface-1">
       {/* Real Leaflet Map */}
       <div className="absolute inset-0 z-0">
         <MapContainer 

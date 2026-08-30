@@ -6,12 +6,14 @@ import { ApplyModal } from '../../components/ApplyModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Avatar } from '../../components/Avatar';
 import { JobThumbnail } from '../../components/JobThumbnail';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2, X } from 'lucide-react';
+import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2, X, Pencil } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { CATEGORIES } from '../../lib/categories';
+import { travelLabelBetween } from '../../lib/distance';
+import { useUserLocation } from '../../hooks/useUserLocation';
 
 /** date-fns throws on an invalid date, and a throw during render blanks the app. */
 const relativeTime = (value: unknown) => {
@@ -39,6 +41,7 @@ export const Home: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [greeting] = useState(timeOfDayGreeting);
+  const userPosition = useUserLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [jobs, setJobs] = useState<any[]>([]);
@@ -75,38 +78,38 @@ export const Home: React.FC = () => {
   // Ensure user is synced with local DB
   useEffect(() => {
     if (user) {
-        axios.get('/api/users/me').catch(err => console.error('Auto-sync failed:', err));
+      axios.get('/api/users/me').catch(err => console.error('Auto-sync failed:', err));
     }
   }, [user]);
 
   const handleStartChat = async (job: any) => {
     if (!user) {
-        showNotice('Please sign in to message your neighbours.');
-        return;
+      showNotice('Please sign in to message your neighbours.');
+      return;
     }
 
     try {
-        // Find our user record first to get the internal ID
-        const { data: me } = await axios.get('/api/users/me');
+      // Find our user record first to get the internal ID
+      const { data: me } = await axios.get('/api/users/me');
 
-        if (!me || !me.id) {
-            showNotice('Your profile is not set up yet. Finish it from Account.');
-            return;
-        }
+      if (!me || !me.id) {
+        showNotice('Your profile is not set up yet. Finish it from Account.');
+        return;
+      }
 
-        if (me.id === job.poster_id) {
-            showNotice("That's your own job - check Account > Your Jobs to see who applied.");
-            return;
-        }
+      if (me.id === job.poster_id) {
+        showNotice("That's your own job - check Account > Your Jobs to see who applied.");
+        return;
+      }
 
-        const { data: conversation } = await axios.post('/api/conversations', {
-            job_id: job.id,
-            participant_ids: [me.id, job.poster_id]
-        });
-        navigate(`/chat/${conversation.id}`);
+      const { data: conversation } = await axios.post('/api/conversations', {
+        job_id: job.id,
+        participant_ids: [me.id, job.poster_id]
+      });
+      navigate(`/chat/${conversation.id}`);
     } catch (err) {
-        console.error('Failed to start chat:', err);
-        showNotice('Could not open that chat. Please try again.');
+      console.error('Failed to start chat:', err);
+      showNotice('Could not open that chat. Please try again.');
     }
   };
 
@@ -147,6 +150,16 @@ export const Home: React.FC = () => {
     window.setTimeout(() => setNotice(null), 5000);
   };
 
+  /**
+   * "12 min drive" when we know where the viewer is, otherwise the area name.
+   * Distance is the more useful answer on a hyperlocal board - "Normandy" means
+   * nothing unless you already know the area.
+   */
+  const jobProximity = (job: any) =>
+    travelLabelBetween(userPosition, [job.lat, job.lng]) ||
+    job.address?.split(',')[0] ||
+    'Nearby';
+
   // The API returns only *your* application on each job, so this is enough to
   // know whether you have already applied and at what price.
   const myApplication = (job: any) => (job.applications || [])[0];
@@ -161,7 +174,7 @@ export const Home: React.FC = () => {
 
   const filteredJobs = jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         job.description.toLowerCase().includes(searchQuery.toLowerCase());
+      job.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || job.category.toLowerCase() === activeCategory.toLowerCase();
     const matchesUrgency = !urgencyFilter || job.urgency === urgencyFilter;
     const matchesBudget = (job.budget_min ?? 0) <= maxBudget;
@@ -414,8 +427,8 @@ export const Home: React.FC = () => {
                         {hired
                           ? `Hired ${hired.helper?.name || 'someone'}`
                           : count === 0
-                          ? 'No applicants yet'
-                          : `${count} applicant${count === 1 ? '' : 's'}`}
+                            ? 'No applicants yet'
+                            : `${count} applicant${count === 1 ? '' : 's'}`}
                       </span>
                       <div className="flex items-center gap-2 shrink-0">
                         <Button
@@ -426,6 +439,14 @@ export const Home: React.FC = () => {
                         >
                           {count > 0 && !hired ? 'Review' : 'Manage'}
                         </Button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/jobs/${job.id}/edit`)}
+                          aria-label={`Edit ${job.title}`}
+                          className="p-2.5 rounded-xl bg-surface-1 border border-hairline text-muted hover:text-amber-accent hover:bg-amber-accent/10 hover:border-amber-accent/30 transition-all active:scale-90"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => setDeletingJob(job)}
@@ -444,7 +465,7 @@ export const Home: React.FC = () => {
         ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
             <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
-            <p className="text-[10px] font-black tracking-[0.2em] uppercase">Finding Gigs...</p>
+            <p className="text-[10px] font-black tracking-[0.2em] uppercase">Finding Jobs...</p>
           </div>
         ) : loadError ? (
           <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-rose-status/30 space-y-4">
@@ -457,56 +478,66 @@ export const Home: React.FC = () => {
           <div className="grid md:grid-cols-2 gap-6">
             {filteredJobs.map((job) => (
               <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-hairline bg-surface-1">
-                <div className="flex gap-4">
-                    <div className="relative shrink-0">
-                        <JobThumbnail
-                            photoUrl={job.photos?.[0]?.url}
-                            category={job.category}
-                            alt={job.title}
-                            className="w-24 h-24 rounded-2xl ring-2 ring-white/5 shadow-2xl"
-                        />
-                        {job.urgency === 'ASAP' && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-rose-status border-4 border-[#080a12] rounded-full shadow-lg" />
-                        )}
+                {/* Only the content opens the job - the buttons below keep
+                    their own actions, so this deliberately does not wrap them. */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/jobs/${job.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate(`/jobs/${job.id}`);
+                    }
+                  }}
+                  className="flex gap-4 text-left cursor-pointer rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50"
+                >
+                  <div className="relative shrink-0">
+                    <JobThumbnail
+                      photoUrl={job.photos?.[0]?.url}
+                      category={job.category}
+                      alt={job.title}
+                      className="w-24 h-24 rounded-2xl ring-2 ring-white/5 shadow-2xl"
+                    />
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <h4 className="font-bold text-xl leading-tight tracking-tight">{job.title}</h4>
+                      <span className="text-amber-accent font-black text-xs bg-amber-accent/10 px-2 py-1 rounded-lg tracking-tighter">
+                        ${job.budget_min} - ${job.budget_max}
+                      </span>
                     </div>
 
-                    <div className="flex-1 space-y-2">
-                        <div className="flex items-start justify-between">
-                            <h4 className="font-bold text-xl leading-tight tracking-tight">{job.title}</h4>
-                            <span className="text-amber-accent font-black text-xs bg-amber-accent/10 px-2 py-1 rounded-lg tracking-tighter">
-                                ${job.budget_min} - ${job.budget_max}
-                            </span>
-                        </div>
-
-                        <div className="flex items-center gap-4 text-[10px] text-muted font-bold uppercase tracking-wider">
-                            <div className="flex items-center gap-1.5">
-                                <MapPin className="w-3.5 h-3.5 text-amber-accent" />
-                                {job.address?.split(',')[0] || 'Nearby'}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5" />
-                                {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-                            </div>
-                        </div>
-
-                        <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
+                    <div className="flex items-center gap-4 text-[10px] text-muted font-bold uppercase tracking-wider">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-amber-accent" />
+                        {jobProximity(job)}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+                      </div>
                     </div>
+
+                    <p className="text-xs text-faint line-clamp-2 leading-relaxed">{job.description}</p>
+                  </div>
                 </div>
 
                 <div className="flex gap-3 pt-2 border-t border-hairline">
-                    <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-hairline" onClick={() => handleStartChat(job)}>
-                         <MessageSquare className="w-4 h-4 mr-2" /> Message
+                  <Button variant="secondary" className="flex-1 text-xs py-3.5 rounded-xl border border-hairline" onClick={() => handleStartChat(job)}>
+                    <MessageSquare className="w-4 h-4 mr-2" /> Message
+                  </Button>
+                  {myApplication(job) ? (
+                    <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-[11px] font-black uppercase tracking-widest">
+                      <Check className="w-4 h-4" />
+                      Applied · ${myApplication(job).proposed_price}
+                    </div>
+                  ) : (
+                    <Button className="flex-1 text-xs py-3.5 rounded-xl" onClick={() => setApplyingTo(job)}>
+                      Apply Now
                     </Button>
-                    {myApplication(job) ? (
-                      <div className="flex-1 flex items-center justify-center gap-2 text-emerald-status text-[11px] font-black uppercase tracking-widest">
-                        <Check className="w-4 h-4" />
-                        Applied · ${myApplication(job).proposed_price}
-                      </div>
-                    ) : (
-                      <Button className="flex-1 text-xs py-3.5 rounded-xl" onClick={() => setApplyingTo(job)}>
-                        Apply Now
-                      </Button>
-                    )}
+                  )}
                 </div>
               </GlassCard>
             ))}
@@ -525,30 +556,30 @@ export const Home: React.FC = () => {
           <h3 className="text-2xl font-display font-bold tracking-tight px-2">Urgent Gigs</h3>
           <div className="grid md:grid-cols-2 gap-6">
             {urgentJobs.map(job => (
-                <GlassCard key={job.id} className="bg-rose-status/[0.07] border-rose-status/20 p-8 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-rose-status/10 blur-[60px] rounded-full pointer-events-none group-hover:bg-rose-status/20 transition-all" />
-                  <div className="flex justify-between items-start mb-6">
-                    <span className="bg-rose-status text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-rose-500/20">Emergency</span>
-                    <span className="text-3xl font-display font-bold text-amber-accent tracking-tighter">${job.budget_min}+</span>
-                  </div>
-                  <h4 className="text-2xl font-bold mb-3 tracking-tight">{job.title}</h4>
-                  <p className="text-muted text-sm mb-8 leading-relaxed line-clamp-2">{job.description}</p>
-                  <div className="flex gap-4">
-                    <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-surface-1 border border-hairline" onClick={() => handleStartChat(job)}>
-                        <MessageSquare className="w-5 h-5" />
+              <GlassCard key={job.id} className="bg-rose-status/[0.07] border-rose-status/20 p-8 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-rose-status/10 blur-[60px] rounded-full pointer-events-none group-hover:bg-rose-status/20 transition-all" />
+                <div className="flex justify-between items-start mb-6">
+                  <span className="bg-rose-status text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg shadow-rose-500/20">Emergency</span>
+                  <span className="text-3xl font-display font-bold text-amber-accent tracking-tighter">${job.budget_min}+</span>
+                </div>
+                <h4 className="text-2xl font-bold mb-3 tracking-tight">{job.title}</h4>
+                <p className="text-muted text-sm mb-8 leading-relaxed line-clamp-2">{job.description}</p>
+                <div className="flex gap-4">
+                  <Button variant="secondary" className="p-4 rounded-xl flex-1 bg-surface-1 border border-hairline" onClick={() => handleStartChat(job)}>
+                    <MessageSquare className="w-5 h-5" />
+                  </Button>
+                  {myApplication(job) ? (
+                    <div className="flex-[3] flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest">
+                      <Check className="w-4 h-4" />
+                      Applied · ${myApplication(job).proposed_price}
+                    </div>
+                  ) : (
+                    <Button className="flex-[3] bg-rose-status hover:bg-rose-600 shadow-xl shadow-rose-500/20 rounded-xl font-black uppercase tracking-widest text-xs py-4" onClick={() => setApplyingTo(job)}>
+                      Instant Apply
                     </Button>
-                    {myApplication(job) ? (
-                      <div className="flex-[3] flex items-center justify-center gap-2 text-emerald-status text-xs font-black uppercase tracking-widest">
-                        <Check className="w-4 h-4" />
-                        Applied · ${myApplication(job).proposed_price}
-                      </div>
-                    ) : (
-                      <Button className="flex-[3] bg-rose-status hover:bg-rose-600 shadow-xl shadow-rose-500/20 rounded-xl font-black uppercase tracking-widest text-xs py-4" onClick={() => setApplyingTo(job)}>
-                          Instant Apply
-                      </Button>
-                    )}
-                  </div>
-                </GlassCard>
+                  )}
+                </div>
+              </GlassCard>
             ))}
           </div>
         </section>

@@ -13,6 +13,7 @@ import { Account } from './screens/app/Account';
 import { Settings } from './screens/app/Settings';
 import { Notifications } from './screens/app/Notifications';
 import { MyJobs } from './screens/app/MyJobs';
+import { JobDetail } from './screens/app/JobDetail';
 import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
@@ -110,6 +111,8 @@ export default function App() {
             <Route path="account/settings" element={<Settings />} />
             <Route path="account/notifications" element={<Notifications />} />
             <Route path="my-jobs" element={<MyJobs />} />
+            <Route path="jobs/:id" element={<JobDetail />} />
+            <Route path="jobs/:id/edit" element={<PostJob />} />
             <Route path="profile-setup" element={<ProfileSetup />} />
             {/* Add more routes here */}
           </Route>
