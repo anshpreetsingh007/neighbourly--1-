@@ -55,7 +55,7 @@ export const Layout: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#080a12]">
+    <div className="min-h-screen flex flex-col md:flex-row">
       {/* Background blobs for premium feel */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />

@@ -84,9 +84,12 @@
   border-color: var(--glass-border);
 }
 
+/* A deliberately light surface in BOTH themes - for chrome that sits over dark
+   imagery (map overlays, photo captions) and pairs with dark text. Do not point
+   this at a theme token: the whole point is that it does not flip. */
 .glass-light {
   @apply backdrop-blur-md border;
-  background: var(--glass-hover);
+  background: rgba(255, 255, 255, 0.72);
   border-color: var(--glass-border);
 }
 

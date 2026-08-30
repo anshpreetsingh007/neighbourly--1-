@@ -189,7 +189,7 @@ export const MapView: React.FC = () => {
             <Button
               variant="secondary"
               aria-label="Filter by category"
-              className="p-5 rounded-3xl border border-hairline bg-[#080a12]/80 relative"
+              className="p-5 rounded-3xl border border-hairline bg-panel relative"
               onClick={() => setShowFilters(true)}
             >
             <Filter className="w-6 h-6" />
@@ -215,7 +215,7 @@ export const MapView: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="w-full md:max-w-md glass rounded-t-[2.5rem] md:rounded-[2rem] p-8 border border-hairline bg-[#0f1119]"
+              className="w-full md:max-w-md glass rounded-t-[2.5rem] md:rounded-[2rem] p-8 border border-hairline bg-panel"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
@@ -263,7 +263,7 @@ export const MapView: React.FC = () => {
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 bg-[#080a12]/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-panel backdrop-blur-sm z-50 flex items-center justify-center">
              <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-hairline">
                 <Loader2 className="w-12 h-12 text-amber-accent animate-spin" />
                 <p className="text-[10px] font-black tracking-[0.2em] uppercase text-body">Scanning Area...</p>
@@ -273,7 +273,7 @@ export const MapView: React.FC = () => {
 
       {/* Error Overlay */}
       {!isLoading && loadError && (
-        <div className="absolute inset-0 bg-[#080a12]/60 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-panel backdrop-blur-sm z-50 flex items-center justify-center">
              <div className="p-8 glass rounded-[3rem] flex flex-col items-center gap-4 border border-rose-status/20 text-center">
                 <AlertTriangle className="w-12 h-12 text-rose-status" />
                 <p className="text-[10px] font-black tracking-[0.2em] uppercase text-body">Couldn't load jobs</p>
@@ -292,7 +292,7 @@ export const MapView: React.FC = () => {
             transition={{ type: 'spring', damping: 20, stiffness: 150 }}
             className="absolute bottom-28 left-6 right-6 z-20 md:max-w-xl md:left-1/2 md:-translate-x-1/2"
           >
-            <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-hairline bg-[#0b0e1a]/95">
+            <div className="p-8 relative rounded-3xl backdrop-blur-2xl shadow-[0_0_100px_rgba(0,0,0,0.6)] border border-hairline bg-panel">
               <button
                 onClick={() => setSelectedJob(null)}
                 aria-label="Close job details"

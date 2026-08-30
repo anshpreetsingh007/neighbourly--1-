@@ -244,12 +244,12 @@ export const ChatThread: React.FC = () => {
   const otherParticipant = messages.find(m => m.sender_id !== meId)?.sender;
 
   return (
-    <div className="h-screen flex flex-col bg-[#0f172a]/50 relative">
+    <div className="h-screen flex flex-col relative">
       {/* Header */}
-      <header className="p-4 md:p-6 glass-light backdrop-blur-3xl flex items-center justify-between z-10 border-b border-hairline sticky top-0 shadow-2xl">
+      <header className="p-4 md:p-6 glass backdrop-blur-3xl flex items-center justify-between z-10 border-b border-hairline sticky top-0 shadow-2xl">
         <div className="flex items-center gap-4 min-w-0">
-          <button onClick={() => navigate('/chat')} aria-label="Back to messages" className="p-2.5 hover:bg-black/5 rounded-2xl transition-all active:scale-90 bg-surface-1 border border-hairline shrink-0">
-            <ChevronLeft className="w-6 h-6 text-slate-900" />
+          <button onClick={() => navigate('/chat')} aria-label="Back to messages" className="p-2.5 hover:bg-surface-2 rounded-2xl transition-all active:scale-90 bg-surface-1 border border-hairline shrink-0">
+            <ChevronLeft className="w-6 h-6 text-strong" />
           </button>
           <div className="flex items-center gap-3 min-w-0">
             <Avatar
@@ -257,13 +257,13 @@ export const ChatThread: React.FC = () => {
               avatarUrl={otherParticipant?.avatar_url}
               seed={otherParticipant?.id || id}
             />
-            <h3 className="font-bold leading-tight text-slate-900 truncate">{otherParticipant?.name || 'Neighbour'}</h3>
+            <h3 className="font-bold leading-tight text-strong truncate">{otherParticipant?.name || 'Neighbour'}</h3>
           </div>
         </div>
         <div className="relative shrink-0">
           <button
             onClick={() => setShowMenu(s => !s)}
-            className="p-3 hover:bg-black/5 rounded-2xl transition-colors text-slate-500"
+            className="p-3 hover:bg-surface-2 rounded-2xl transition-colors text-muted"
             aria-label="More options"
             aria-expanded={showMenu}
           >
@@ -326,7 +326,7 @@ export const ChatThread: React.FC = () => {
                   <div className={clsx(
                       "p-4 rounded-2xl text-sm shadow-sm relative group",
                       isMe
-                        ? "bg-amber-accent text-slate-900 font-bold rounded-tr-none shadow-amber-500/10"
+                        ? "bg-amber-accent text-strong font-bold rounded-tr-none shadow-amber-500/10"
                         : "glass text-strong rounded-tl-none border border-hairline"
                   )}>
                       {msg.body}
@@ -388,7 +388,7 @@ export const ChatThread: React.FC = () => {
           <button
             onClick={handleSendMessage}
             disabled={!newMessage.trim()}
-            className="p-4 bg-amber-accent text-slate-900 rounded-2xl shadow-xl shadow-amber-500/30 active:scale-90 enabled:hover:scale-105 transition-all disabled:opacity-50 disabled:grayscale"
+            className="p-4 bg-amber-accent text-strong rounded-2xl shadow-xl shadow-amber-500/30 active:scale-90 enabled:hover:scale-105 transition-all disabled:opacity-50 disabled:grayscale"
           >
             <Send className="w-6 h-6" />
           </button>
