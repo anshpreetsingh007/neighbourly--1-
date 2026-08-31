@@ -19,6 +19,7 @@ import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
 import { travelLabelBetween } from '../../lib/distance';
+import { optimizedImage } from '../../lib/images';
 import { formatMoney, formatRange } from '../../lib/money';
 import { useUserLocation } from '../../hooks/useUserLocation';
 
@@ -361,6 +362,8 @@ export const Home: React.FC = () => {
                         className="w-full flex items-start gap-4 text-left"
                       >
                         <JobThumbnail
+                          width={64}
+                          height={64}
                           photoUrl={job.photos?.[0]?.url}
                           category={job.category}
                           alt={job.title}
@@ -522,6 +525,8 @@ export const Home: React.FC = () => {
                 >
                   <div className="relative shrink-0">
                     <JobThumbnail
+                      width={96}
+                      height={96}
                       photoUrl={job.photos?.[0]?.url}
                       category={job.category}
                       alt={job.title}

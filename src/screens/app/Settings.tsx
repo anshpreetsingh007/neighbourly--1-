@@ -6,6 +6,7 @@ import { ChevronLeft, User, MapPin, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
+import { optimizedImage } from '../../lib/images';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
@@ -122,7 +123,7 @@ export const Settings: React.FC = () => {
             <div className="relative">
               <div className="w-24 h-24 bg-surface-1 rounded-3xl flex items-center justify-center border-2 border-dashed border-hairline overflow-hidden">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={optimizedImage(avatarUrl, { width: 96, height: 96 })} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   <User className="w-10 h-10 text-faint" />
                 )}

@@ -13,6 +13,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { saveJobDraft, loadJobDraft, clearJobDraft } from '../../lib/jobDraft';
 import L from 'leaflet';
 import { CATEGORIES } from '../../lib/categories';
+import { optimizedImage, PHOTO_MAX } from '../../lib/images';
 import { BUDGET_MAX } from '../../lib/money';
 
 /** Stored form -> the labels the urgency buttons render and compare against. */
@@ -228,6 +229,12 @@ export const PostJob: React.FC = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // The Add tile is hidden at the limit, but a file can still arrive here
+    // from a restored draft or a double pick before the state settles.
+    if (formData.photos.length >= PHOTO_MAX) {
+      showToast(`You can add up to ${PHOTO_MAX} photos.`, 'error');
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -430,7 +437,7 @@ export const PostJob: React.FC = () => {
               <div className="grid grid-cols-3 gap-3">
                 {formData.photos.map((url, index) => (
                   <div key={index} className="relative aspect-square rounded-xl overflow-hidden border border-hairline">
-                    <img src={url} alt="Job" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={optimizedImage(url, { width: 112, height: 112 })} alt="Job" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     <button
                       onClick={() => setFormData(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }))}
                       className="absolute top-1 right-1 bg-rose-status p-1 rounded-lg shadow-lg"
@@ -440,7 +447,7 @@ export const PostJob: React.FC = () => {
                   </div>
                 ))}
 
-                {formData.photos.length < 6 && (
+                {formData.photos.length < PHOTO_MAX && (
                   <label className="aspect-square glass rounded-xl flex flex-col items-center justify-center gap-2 border-2 border-dashed border-hairline hover:border-amber-accent/50 transition-all cursor-pointer">
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
                     {isUploading ? (

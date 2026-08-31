@@ -1,5 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
+import { optimizedImage } from '../lib/images';
 import { categoryIcon } from '../lib/categories';
 
 interface Props {
@@ -7,6 +8,15 @@ interface Props {
   category?: string | null;
   alt: string;
   className?: string;
+  /** Rendered size in CSS pixels, so Cloudinary can send a matching file. */
+  width: number;
+  height?: number;
+  /**
+   * 'cover' crops the photo to fill the box - right for small square tiles.
+   * 'contain' shows the whole photo letterboxed, which is what you want when
+   * the image is the point of the screen rather than a marker in a list.
+   */
+  fit?: 'cover' | 'contain';
 }
 
 /**
@@ -14,14 +24,20 @@ interface Props {
  * a plain gradient tile - never a random stock photo standing in for a job
  * nobody actually took a picture of.
  */
-export const JobThumbnail: React.FC<Props> = ({ photoUrl, category, alt, className }) => {
+export const JobThumbnail: React.FC<Props> = ({ photoUrl, category, alt, className, width, height, fit = 'cover' }) => {
   if (photoUrl) {
     return (
       <img
-        src={photoUrl}
+        // Only pass a height when we actually want a crop: with both set,
+        // Cloudinary fills the box and cuts off whatever does not fit.
+        src={optimizedImage(photoUrl, { width, height: fit === 'cover' ? height : undefined })}
         alt={alt}
         referrerPolicy="no-referrer"
-        className={clsx('object-cover shrink-0', className)}
+        className={clsx(
+          'shrink-0',
+          fit === 'cover' ? 'object-cover' : 'object-contain bg-surface-1',
+          className
+        )}
       />
     );
   }

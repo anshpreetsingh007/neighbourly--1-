@@ -260,6 +260,23 @@ function jobForViewer(job: any, viewerId: string) {
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 1000;
 const ADDRESS_MAX = 300;
+/** Storage and bandwidth are billed per image, so the set has a ceiling. */
+const PHOTO_MAX = 10;
+
+/**
+ * Photos arrive as an array of Cloudinary URLs. Anything else - a non-array, a
+ * non-string entry, more than the cap - is rejected rather than written, since
+ * these strings end up in an <img src> on every viewer's page.
+ */
+function validatePhotos(photos: unknown): string | null {
+  if (photos === undefined || photos === null) return null;
+  if (!Array.isArray(photos)) return 'Photos must be a list';
+  if (photos.length > PHOTO_MAX) return `You can add up to ${PHOTO_MAX} photos`;
+  if (photos.some(url => typeof url !== 'string' || !url.trim())) {
+    return 'One of those photos is not a valid image';
+  }
+  return null;
+}
 
 /**
  * A job budget is a neighbourhood odd-job price, not a number people should be
@@ -290,6 +307,48 @@ function parseBudget(rawMin: unknown, rawMax: unknown):
   }
   // Fractions of a cent are noise on a board priced in whole dollars.
   return { min: Math.round(min * 100) / 100, max: Math.round(max * 100) / 100 };
+}
+
+/**
+ * Turns a Cloudinary delivery URL back into the public_id the Admin API needs
+ * to delete it. Returns null for anything that is not one of ours - a Google
+ * OAuth avatar must never be handed to cloudinary.destroy.
+ *
+ *   https://res.cloudinary.com/<cloud>/image/upload/v1234/neighbourly_jobs/abc.jpg
+ *     -> neighbourly_jobs/abc
+ */
+function cloudinaryPublicId(url: string): string | null {
+  const match = /^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/(.+)$/.exec(url || '');
+  if (!match) return null;
+
+  const segments = match[1].split('/');
+  // Drop the version marker and any transformation segment sitting in front of
+  // the public_id, so a resized URL still resolves to the original asset.
+  while (segments.length > 1 && /^(v\d+|[a-z]{1,3}_[^/]*)$/.test(segments[0])) {
+    segments.shift();
+  }
+  const path = segments.join('/');
+  if (!path) return null;
+  return path.replace(/\.[a-zA-Z0-9]+$/, '');
+}
+
+/**
+ * Removes images from Cloudinary once their rows are gone. Best effort on
+ * purpose: the database is the source of truth, and a failed cleanup should
+ * leave an orphaned file and a log line, never a failed request for a delete
+ * that already happened.
+ */
+async function destroyCloudinaryImages(urls: string[]) {
+  const ids = urls.map(cloudinaryPublicId).filter((id): id is string => Boolean(id));
+  if (!ids.length || !process.env.CLOUDINARY_API_SECRET) return;
+
+  await Promise.all(
+    ids.map(id =>
+      cloudinary.uploader
+        .destroy(id)
+        .catch(err => console.error(`Failed to delete Cloudinary asset ${id}:`, err))
+    )
+  );
 }
 
 /** Returns an error message if a field is over its cap, otherwise null. */
@@ -519,6 +578,9 @@ async function startServer() {
     const budget = parseBudget(budget_min, budget_max);
     if (budget.error) return res.status(400).json({ error: budget.error });
 
+    const photoError = validatePhotos(photos);
+    if (photoError) return res.status(400).json({ error: photoError });
+
     try {
       // The poster is whoever holds the token. A poster_id in the body is ignored.
       const user = currentUser(req);
@@ -693,8 +755,19 @@ async function startServer() {
         data.address = req.body.address;
       }
 
+      const photoError = validatePhotos(photos);
+      if (photoError) return res.status(400).json({ error: photoError });
+
       // Photos are their own rows, so a change means replacing the set.
       const replacePhotos = Array.isArray(photos);
+
+      // Whatever the edit drops is orphaned in Cloudinary otherwise. Compare
+      // against the incoming list so a photo that was kept is not deleted.
+      const removedPhotos = replacePhotos
+        ? (await prisma.jobPhoto.findMany({ where: { job_id: id }, select: { url: true } }))
+            .map(p => p.url)
+            .filter(url => !photos.includes(url))
+        : [];
 
       const [updated] = await prisma.$transaction([
         prisma.job.update({ where: { id }, data }),
@@ -707,6 +780,8 @@ async function startServer() {
             ]
           : []),
       ]);
+
+      await destroyCloudinaryImages(removedPhotos);
 
       res.json(updated);
     } catch (err) {
@@ -739,12 +814,24 @@ async function startServer() {
         return res.json({ deleted: false, cancelled: true });
       }
 
+      // Read the URLs before the rows go, since that is the only record of
+      // what this job had in Cloudinary.
+      const photos = await prisma.jobPhoto.findMany({
+        where: { job_id: id },
+        select: { url: true },
+      });
+
       // Photos have a required relation, so they must go first. Conversations
       // reference the job optionally and are detached by the database.
       await prisma.$transaction([
         prisma.jobPhoto.deleteMany({ where: { job_id: id } }),
         prisma.job.delete({ where: { id } }),
       ]);
+
+      // Only after the rows are actually gone: destroying first would lose the
+      // images for a delete that then failed.
+      await destroyCloudinaryImages(photos.map(p => p.url));
+
       res.json({ deleted: true, cancelled: false });
     } catch (err) {
       console.error('Failed to delete job:', err);

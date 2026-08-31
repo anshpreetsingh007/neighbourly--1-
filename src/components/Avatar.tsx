@@ -1,5 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
+import { optimizedImage } from '../lib/images';
 
 interface Props {
   name?: string | null;
@@ -9,6 +10,15 @@ interface Props {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'profile';
   className?: string;
 }
+
+/** Rendered size in CSS pixels, matching SIZES - what we ask Cloudinary for. */
+const PIXELS: Record<NonNullable<Props['size']>, number> = {
+  sm: 36,
+  md: 44,
+  lg: 56,
+  xl: 96,
+  profile: 128,
+};
 
 const SIZES: Record<NonNullable<Props['size']>, string> = {
   sm: 'w-9 h-9 text-xs rounded-xl',
@@ -53,7 +63,7 @@ export const Avatar: React.FC<Props> = ({ name, avatarUrl, seed, size = 'md', cl
   if (avatarUrl) {
     return (
       <img
-        src={avatarUrl}
+        src={optimizedImage(avatarUrl, { width: PIXELS[size], height: PIXELS[size] })}
         alt={name || 'Avatar'}
         referrerPolicy="no-referrer"
         className={clsx('object-cover ring-2 ring-white/10 shrink-0', SIZES[size], className)}

@@ -26,6 +26,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { basemapFor } from '../../lib/basemap';
 import { categoryIcon, categoryName } from '../../lib/categories';
 import { travelLabelBetween } from '../../lib/distance';
+import { optimizedImage } from '../../lib/images';
 import { formatMoney, formatRange } from '../../lib/money';
 import { useUserLocation } from '../../hooks/useUserLocation';
 
@@ -144,10 +145,12 @@ export const JobDetail: React.FC = () => {
 
       <div className="p-6 space-y-6 max-w-2xl mx-auto">
         <JobThumbnail
+          width={672}
+          fit="contain"
           photoUrl={job.photos?.[0]?.url}
           category={job.category}
           alt={job.title}
-          className="w-full h-56 rounded-3xl border border-hairline"
+          className="w-full h-72 rounded-3xl border border-hairline"
         />
 
         {job.photos?.length > 1 && (
@@ -155,7 +158,7 @@ export const JobDetail: React.FC = () => {
             {job.photos.slice(1).map((photo: any) => (
               <img
                 key={photo.id}
-                src={photo.url}
+                src={optimizedImage(photo.url, { width: 96, height: 96 })}
                 alt=""
                 className="w-24 h-24 rounded-2xl object-cover border border-hairline shrink-0"
                 referrerPolicy="no-referrer"

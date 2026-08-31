@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useSocket } from '../../hooks/useSocket';
+import { optimizedImage } from '../../lib/images';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { format } from 'date-fns';
@@ -320,7 +321,7 @@ export const ChatThread: React.FC = () => {
               >
                 {msg.type === 'IMAGE' && msg.photo_url ? (
                   <a href={msg.photo_url} target="_blank" rel="noreferrer" className="block rounded-2xl overflow-hidden border border-hairline shadow-lg">
-                    <img src={msg.photo_url} alt="Shared photo" className="max-w-[240px] max-h-[320px] object-cover" referrerPolicy="no-referrer" />
+                    <img src={optimizedImage(msg.photo_url, { width: 240, height: 320 })} alt="Shared photo" className="max-w-[240px] max-h-[320px] object-cover" referrerPolicy="no-referrer" />
                   </a>
                 ) : (
                   <div className={clsx(
