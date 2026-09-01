@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast';
 import { useTheme, type ThemePreference } from '../../contexts/ThemeContext';
 import { GlassCard, Button } from '../../components/UI';
 import { Avatar } from '../../components/Avatar';
+import { Skeleton } from '../../components/Skeleton';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import {
@@ -28,6 +29,10 @@ export const Account: React.FC = () => {
   const { showToast } = useToast();
   const { preference, setPreference } = useTheme();
   const [profile, setProfile] = React.useState<any>(null);
+  // Without this the page paints its fallbacks first - "Neighbour",
+  // "Neighbourhood not set", a "?" avatar, 0 jobs - and then swaps them for
+  // the real values, which reads as the app showing wrong information.
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     const fetchProfile = async () => {
@@ -37,6 +42,8 @@ export const Account: React.FC = () => {
         setProfile(data);
       } catch (err) {
         console.error('Failed to fetch profile:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchProfile();
@@ -62,8 +69,21 @@ export const Account: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8 max-w-2xl mx-auto">
       {/* Profile Header */}
+      {isLoading ? (
+        <section className="flex flex-col items-center text-center space-y-4">
+          <Skeleton className="w-32 h-32 rounded-[40px]" />
+          <div className="space-y-2 flex flex-col items-center">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-56 rounded-lg" />
+          </div>
+          <div className="flex gap-4 w-full">
+            <Skeleton className="flex-1 h-[104px] rounded-3xl" />
+            <Skeleton className="flex-1 h-[104px] rounded-3xl" />
+          </div>
+        </section>
+      ) : (
       <section className="flex flex-col items-center text-center space-y-4">
         <div className="relative">
           <div className="border-4 border-hairline shadow-2xl rounded-[40px]">
@@ -107,6 +127,7 @@ export const Account: React.FC = () => {
           </GlassCard>
         </div>
       </section>
+      )}
 
       {/* Appearance */}
       <section className="space-y-3">

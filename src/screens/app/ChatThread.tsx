@@ -22,6 +22,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { optimizedImage } from '../../lib/images';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
+import { uploadImage } from '../../lib/upload';
 import { format } from 'date-fns';
 
 const ReportDialog: React.FC<{ targetName: string; onCancel: () => void; onSubmit: (reason: string) => Promise<void> }> = ({
@@ -200,23 +201,11 @@ export const ChatThread: React.FC = () => {
 
     setIsUploadingPhoto(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_chat' });
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('api_key', signData.api_key);
-      formData.append('timestamp', signData.timestamp);
-      formData.append('signature', signData.signature);
-      formData.append('folder', signData.folder);
-
-      const { data: uploadData } = await axios.post(
-        `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
-        formData
-      );
-
+      const url = await uploadImage(file, 'neighbourly_chat');
       socket.emit('send_message', {
         conversation_id: id,
         body: '',
-        photo_url: uploadData.secure_url,
+        photo_url: url,
       });
     } catch (err) {
       console.error('Photo upload failed:', err);

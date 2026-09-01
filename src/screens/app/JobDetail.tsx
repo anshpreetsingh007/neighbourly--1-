@@ -21,6 +21,7 @@ import { Button } from '../../components/UI';
 import { Avatar } from '../../components/Avatar';
 import { JobThumbnail } from '../../components/JobThumbnail';
 import { ApplyModal } from '../../components/ApplyModal';
+import { PhotoLightbox } from '../../components/PhotoLightbox';
 import { useToast } from '../../components/Toast';
 import { useTheme } from '../../contexts/ThemeContext';
 import { basemapFor } from '../../lib/basemap';
@@ -56,6 +57,7 @@ export const JobDetail: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const loadJob = useCallback(async () => {
     setIsLoading(true);
@@ -130,6 +132,14 @@ export const JobDetail: React.FC = () => {
   // map deliberately shows a radius rather than a point.
   const isApproximate = job.location_precision === 'approximate';
 
+  // The first photo is the hero above, so the grid shows the rest: four tiles,
+  // the last carrying a "+N" overlay. Every one of them opens the viewer at
+  // its own photo, so indexes are into the full list including the hero.
+  const allPhotos: string[] = (job.photos ?? []).map((p: any) => p.url);
+  const extraPhotos: any[] = job.photos?.slice(1) ?? [];
+  const visiblePhotos = extraPhotos.slice(0, 4);
+  const hiddenPhotoCount = extraPhotos.length - visiblePhotos.length;
+
   return (
     <div className="pb-8">
       <header className="sticky top-0 z-20 glass backdrop-blur-2xl border-b border-hairline px-4 py-3 flex items-center gap-3">
@@ -144,6 +154,13 @@ export const JobDetail: React.FC = () => {
       </header>
 
       <div className="p-6 space-y-6 max-w-2xl mx-auto">
+        <button
+          type="button"
+          onClick={() => allPhotos.length && setLightboxIndex(0)}
+          disabled={!allPhotos.length}
+          className="block w-full disabled:cursor-default"
+          aria-label={allPhotos.length ? 'View photos' : undefined}
+        >
         <JobThumbnail
           width={672}
           fit="contain"
@@ -152,18 +169,41 @@ export const JobDetail: React.FC = () => {
           alt={job.title}
           className="w-full h-72 rounded-3xl border border-hairline"
         />
+        </button>
 
-        {job.photos?.length > 1 && (
-          <div className="flex gap-3 overflow-x-auto no-scrollbar">
-            {job.photos.slice(1).map((photo: any) => (
-              <img
-                key={photo.id}
-                src={optimizedImage(photo.url, { width: 96, height: 96 })}
-                alt=""
-                className="w-24 h-24 rounded-2xl object-cover border border-hairline shrink-0"
-                referrerPolicy="no-referrer"
-              />
-            ))}
+        {extraPhotos.length > 0 && (
+          <div className="space-y-3">
+            {/* A fixed grid rather than a scrolling strip: photos past the edge
+                of a horizontal scroller are invisible unless you happen to
+                swipe them, so the count is stated instead. */}
+            <div className="grid grid-cols-4 gap-3">
+              {visiblePhotos.map((photo: any, index: number) => {
+                const isMoreTile = hiddenPhotoCount > 0 && index === visiblePhotos.length - 1;
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    // +1 because the hero is photo 0 of the full list.
+                    onClick={() => setLightboxIndex(index + 1)}
+                    aria-label={isMoreTile ? `View all ${allPhotos.length} photos` : `View photo ${index + 2}`}
+                    className="relative aspect-square rounded-2xl overflow-hidden border border-hairline"
+                  >
+                    <img
+                      src={optimizedImage(photo.url, { width: 96, height: 96 })}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    {isMoreTile && (
+                      <span className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-black text-sm">
+                        +{hiddenPhotoCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
           </div>
         )}
 
@@ -330,6 +370,14 @@ export const JobDetail: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {lightboxIndex !== null && (
+        <PhotoLightbox
+          photos={allPhotos}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
       )}
 
       {isApplying && (

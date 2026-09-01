@@ -13,7 +13,8 @@ import {
 } from '../../components/Filters';
 import { Avatar } from '../../components/Avatar';
 import { JobThumbnail } from '../../components/JobThumbnail';
-import { Search, Filter, Star, MapPin, Clock, Loader2, MessageSquare, AlertTriangle, Check, Users, Trash2, Pencil } from 'lucide-react';
+import { JobCardSkeleton, SkeletonList } from '../../components/Skeleton';
+import { Search, Filter, Star, MapPin, Clock, MessageSquare, AlertTriangle, Check, Users, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
@@ -214,7 +215,7 @@ export const Home: React.FC = () => {
 
 
   return (
-    <div className="p-6 md:p-10 space-y-10">
+    <div className="p-6 lg:p-10 space-y-10">
       {notice && (
         <div
           className={clsx(
@@ -320,10 +321,9 @@ export const Home: React.FC = () => {
 
         {tab === 'applied' ? (
           isLoadingApplied || appliedJobs === null ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
-              <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
-              <p className="text-[10px] font-black tracking-[0.2em] uppercase">Loading your applications...</p>
-            </div>
+            <SkeletonList count={3}>
+              <JobCardSkeleton />
+            </SkeletonList>
           ) : appliedJobs.length === 0 ? (
             <div className="text-center py-20 glass rounded-[2.5rem] border border-dashed border-hairline space-y-3">
               <p className="text-faint font-black tracking-widest uppercase text-sm">No applications yet</p>
@@ -332,7 +332,7 @@ export const Home: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="grid xl:grid-cols-2 gap-6">
               {/* Hired first: that is the one you came here to find, and the
                   only one whose exact address is now visible to you. */}
               {[...appliedJobs]
@@ -415,17 +415,16 @@ export const Home: React.FC = () => {
           )
         ) : tab === 'mine' ? (
           isLoadingMine || myJobs === null ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
-              <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
-              <p className="text-[10px] font-black tracking-[0.2em] uppercase">Loading your listings...</p>
-            </div>
+            <SkeletonList count={3}>
+              <JobCardSkeleton />
+            </SkeletonList>
           ) : myJobs.length === 0 ? (
             <div className="flex flex-col items-center text-center py-20 glass rounded-[2.5rem] border border-dashed border-hairline space-y-4">
               <p className="text-faint font-black tracking-widest uppercase text-sm">You haven't posted anything</p>
               <Button size="sm" onClick={() => navigate('/post-job')}>Post a job</Button>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid xl:grid-cols-2 gap-6">
               {myJobs.map((job: any) => {
                 const count = (job.applications || []).length;
                 const hired = (job.applications || []).find((a: any) => a.status === 'ACCEPTED');
@@ -494,10 +493,9 @@ export const Home: React.FC = () => {
             </div>
           )
         ) : isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-50">
-            <Loader2 className="w-10 h-10 text-amber-accent animate-spin" />
-            <p className="text-[10px] font-black tracking-[0.2em] uppercase">Finding Jobs...</p>
-          </div>
+          <SkeletonList count={4}>
+            <JobCardSkeleton />
+          </SkeletonList>
         ) : loadError ? (
           <div className="flex flex-col items-center text-center py-20 glass rounded-[2.5rem] border border-dashed border-rose-status/30 space-y-4">
             <AlertTriangle className="w-10 h-10 text-rose-status mx-auto" />
@@ -506,7 +504,7 @@ export const Home: React.FC = () => {
             <Button variant="secondary" size="sm" onClick={fetchJobs}>Retry</Button>
           </div>
         ) : filteredJobs.length > 0 ? (
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid xl:grid-cols-2 gap-6">
             {filteredJobs.map((job) => (
               <GlassCard key={job.id} hover className="p-5 flex flex-col gap-5 border border-hairline bg-surface-1">
                 {/* Only the content opens the job - the buttons below keep

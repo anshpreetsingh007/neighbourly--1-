@@ -6,6 +6,7 @@ import { Camera, MapPin, ChevronRight, ChevronLeft, CheckCircle2, X as CloseIcon
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
+import { uploadImage } from '../../lib/upload';
 import { clsx } from 'clsx';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import { basemapFor } from '../../lib/basemap';
@@ -238,22 +239,10 @@ export const PostJob: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_jobs' });
-      const formDataUpload = new FormData();
-      formDataUpload.append('file', file);
-      formDataUpload.append('api_key', signData.api_key);
-      formDataUpload.append('timestamp', signData.timestamp);
-      formDataUpload.append('signature', signData.signature);
-      formDataUpload.append('folder', signData.folder);
-
-      const { data: uploadData } = await axios.post(
-        `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
-        formDataUpload
-      );
-
+      const url = await uploadImage(file, 'neighbourly_jobs');
       setFormData(prev => ({
         ...prev,
-        photos: [...prev.photos, uploadData.secure_url]
+        photos: [...prev.photos, url]
       }));
     } catch (err) {
       console.error('Upload failed:', err);
@@ -635,7 +624,7 @@ export const PostJob: React.FC = () => {
   }
 
   return (
-    <div className="p-6 min-h-screen flex flex-col">
+    <div className="p-6 min-h-screen flex flex-col w-full max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-8">
         <button
           onClick={() => (isEditing ? navigate(`/jobs/${editingId}`) : navigate(-1))}

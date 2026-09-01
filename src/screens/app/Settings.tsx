@@ -6,6 +6,7 @@ import { ChevronLeft, User, MapPin, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
+import { uploadImage } from '../../lib/upload';
 import { optimizedImage } from '../../lib/images';
 
 export const Settings: React.FC = () => {
@@ -47,20 +48,7 @@ export const Settings: React.FC = () => {
 
     setIsUploading(true);
     try {
-      const { data: signData } = await axios.post('/api/uploads/sign', { folder: 'neighbourly_avatars' });
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('api_key', signData.api_key);
-      formData.append('timestamp', signData.timestamp);
-      formData.append('signature', signData.signature);
-      formData.append('folder', signData.folder);
-
-      const { data: uploadData } = await axios.post(
-        `https://api.cloudinary.com/v1_1/${signData.cloud_name}/image/upload`,
-        formData
-      );
-
-      setAvatarUrl(uploadData.secure_url);
+      setAvatarUrl(await uploadImage(file, 'neighbourly_avatars'));
     } catch (err) {
       console.error('Avatar upload failed:', err);
       showToast('Could not upload that photo. Please try again.', 'error');

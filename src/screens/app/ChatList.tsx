@@ -52,7 +52,7 @@ export const ChatList: React.FC = () => {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <header>
         <h1 className="text-3xl font-display font-bold">Messages</h1>
       </header>

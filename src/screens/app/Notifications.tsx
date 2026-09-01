@@ -68,7 +68,7 @@ export const Notifications: React.FC = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <header className="flex items-center gap-4">
         <button onClick={() => navigate('/account')} aria-label="Back to account" className="p-2 glass rounded-xl">
           <ChevronLeft className="w-6 h-6" />

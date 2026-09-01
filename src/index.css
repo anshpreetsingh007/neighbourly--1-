@@ -37,7 +37,13 @@
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-hover: rgba(255, 255, 255, 0.14);
   --panel-bg: rgba(11, 14, 26, 0.95);
-  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline: rgba(255, 255, 255, 0.10);
+
+  /* Loading placeholders need their own colours: --surface-1/2 are 4% and 8%
+     tints meant to sit *behind* content, and at that contrast a skeleton reads
+     as an empty box rather than something arriving. */
+  --skeleton-base: rgba(255, 255, 255, 0.09);
+  --skeleton-sheen: rgba(255, 255, 255, 0.20);
   --surface-1: rgba(255, 255, 255, 0.05);
   --surface-2: rgba(255, 255, 255, 0.10);
 }
@@ -62,6 +68,9 @@
   --hairline: rgba(15, 23, 42, 0.10);
   --surface-1: rgba(15, 23, 42, 0.04);
   --surface-2: rgba(15, 23, 42, 0.08);
+
+  --skeleton-base: rgba(15, 23, 42, 0.09);
+  --skeleton-sheen: rgba(255, 255, 255, 0.85);
 }
 
 /* Semantic utilities. Prefer these over text-white / border-white so a
@@ -80,6 +89,34 @@
 /* For the separator ring around badges that overlap an image - it should read
    as the card punching through, so it has to follow the theme. */
 @utility border-panel { border-color: var(--panel-bg); }
+
+/* Loading placeholders. A light sweep across a neutral block reads as
+   "content is on its way" in a way a static grey box does not, and unlike a
+   spinner it shows the shape of what is about to appear. */
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton-base);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skeleton-sheen), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* A sweep that never stops is exactly what motion sensitivity flags. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
 
 .glass {
   @apply backdrop-blur-md border;

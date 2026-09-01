@@ -110,7 +110,7 @@ export const MyJobs: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-3xl mx-auto">
       <header className="flex items-center gap-3">
         <button
           onClick={() => navigate('/account')}

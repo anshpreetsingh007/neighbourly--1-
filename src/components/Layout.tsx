@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Avatar } from './Avatar';
+import { Skeleton } from './Skeleton';
 import { Home, Map, PlusCircle, MessageSquare, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
@@ -24,13 +25,21 @@ export const Layout: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+  // The card falls back to 'Your Account' and an initials avatar while the
+  // profile is in flight, so without this it paints a stranger's placeholder
+  // for a moment on every load.
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const socket = useSocket('notifications');
 
   useEffect(() => {
     if (!user) return;
-    axios.get('/api/users/me').then(({ data }) => setProfile(data)).catch(() => {});
+    axios
+      .get('/api/users/me')
+      .then(({ data }) => setProfile(data))
+      .catch(() => {})
+      .finally(() => setIsLoadingProfile(false));
     axios.get('/api/notifications').then(({ data }) => setNotifications(data)).catch(() => {});
   }, [user]);
 
@@ -74,7 +83,7 @@ export const Layout: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Background blobs for premium feel */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
@@ -82,7 +91,7 @@ export const Layout: React.FC = () => {
       </div>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-72 h-screen glass border-r border-hairline sticky top-0 p-6 z-50">
+      <aside className="hidden lg:flex flex-col w-72 h-screen glass border-r border-hairline sticky top-0 p-6 z-50">
         <div className="flex items-center gap-3 mb-10 px-2">
           <div className="w-10 h-10 bg-amber-accent rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
             <PlusCircle className="text-slate-900 w-6 h-6" />
@@ -118,23 +127,33 @@ export const Layout: React.FC = () => {
           onClick={() => navigate('/account')}
           className="mt-auto glass p-4 rounded-2xl border border-hairline hover:bg-surface-2 transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-accent/50"
         >
-          <div className="flex items-center gap-3">
-            <Avatar
-              name={profile?.name || user?.user_metadata?.full_name}
-              avatarUrl={profile?.avatar_url || user?.user_metadata?.avatar_url}
-              seed={user?.id}
-              size="md"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate">{profile?.name || user?.user_metadata?.full_name || 'Your Account'}</p>
-              <p className="text-[10px] text-muted truncate">{profile?.neighbourhood || 'View profile'}</p>
+          {isLoadingProfile ? (
+            <div className="flex items-center gap-3">
+              <Skeleton className="w-11 h-11 rounded-2xl shrink-0" />
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <Skeleton className="h-3.5 w-24 rounded" />
+                <Skeleton className="h-2.5 w-16 rounded" />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Avatar
+                name={profile?.name || user?.user_metadata?.full_name}
+                avatarUrl={profile?.avatar_url || user?.user_metadata?.avatar_url}
+                seed={user?.id}
+                size="md"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate">{profile?.name || user?.user_metadata?.full_name || 'Your Account'}</p>
+                <p className="text-[10px] text-muted truncate">{profile?.neighbourhood || 'View profile'}</p>
+              </div>
+            </div>
+          )}
         </button>
       </aside>
 
       {/* Main Content */}
-      <main className={clsx("flex-1 relative z-10 md:pb-0", !isImmersive && "pb-28")}>
+      <main className={clsx("flex-1 relative z-10 lg:pb-0", !isImmersive && "pb-28")}>
         <div className="max-w-6xl mx-auto">
           {/* Keyed on the path so the boundary resets when you navigate away,
               rather than trapping the user on the error screen. */}
@@ -146,7 +165,7 @@ export const Layout: React.FC = () => {
 
       {/* Mobile Bottom Navigation */}
       {!isImmersive && (
-      <nav className="md:hidden fixed bottom-6 left-6 right-6 h-[72px] glass rounded-3xl flex items-center justify-around px-4 z-50 border border-hairline shadow-2xl">
+      <nav className="lg:hidden fixed bottom-6 left-4 right-4 sm:left-6 sm:right-6 h-[68px] glass rounded-full flex items-center justify-around px-3 z-50 border border-hairline shadow-2xl">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -155,33 +174,34 @@ export const Layout: React.FC = () => {
             aria-label={item.label}
             title={item.label}
             className={({ isActive }) => clsx(
-              "relative flex flex-col items-center gap-1 transition-all duration-300",
+              "relative flex items-center justify-center transition-colors duration-300",
               // A circle inside the bar rather than a large square breaking out
               // of it: still the most prominent control, but it no longer
               // overlaps the content behind the nav.
               item.isAction
-                ? "w-11 h-11 rounded-full bg-amber-accent items-center justify-center shadow-lg shadow-amber-500/25"
-                : "p-2",
+                ? "w-11 h-11 rounded-full bg-amber-accent shadow-lg shadow-amber-500/25"
+                : "px-5 py-2.5 rounded-full",
               isActive && !item.isAction ? "text-amber-accent" : "text-muted"
             )}
           >
             {({ isActive }) => (
               <>
-                <div className="relative">
-                  <item.icon className={clsx(
-                    item.isAction ? "text-slate-900 w-5 h-5" : "w-6 h-6",
-                    isActive && !item.isAction && "scale-110"
-                  )} />
-                  {item.dot && !item.isAction && (
-                    <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-accent rounded-full shadow-[0_0_6px_rgba(245,166,35,0.8)]" />
-                  )}
-                </div>
+                {/* A capsule behind the active icon rather than a dot beneath
+                    it: the dot was one 4px pixel of feedback on a 68px bar.
+                    layoutId makes it slide between tabs instead of blinking. */}
                 {isActive && !item.isAction && (
-                  <motion.div
-                    layoutId="nav-indicator-mobile"
-                    className="absolute -bottom-1 w-1 h-1 bg-amber-accent rounded-full shadow-[0_0_8px_rgba(245,166,35,0.8)]"
+                  <motion.span
+                    layoutId="nav-pill"
+                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                    className="absolute inset-0 rounded-full bg-surface-2"
                   />
                 )}
+                <span className="relative z-10">
+                  <item.icon className={clsx(item.isAction ? "text-slate-900 w-5 h-5" : "w-6 h-6")} />
+                  {item.dot && !item.isAction && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-accent rounded-full shadow-[0_0_6px_rgba(245,166,35,0.8)]" />
+                  )}
+                </span>
               </>
             )}
           </NavLink>
