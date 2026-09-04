@@ -45,6 +45,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "autocannon": "^8.0.0",
     "autoprefixer": "^10.4.21",
     "dotenv-cli": "^11.0.0",
     "tailwindcss": "^4.1.14",
