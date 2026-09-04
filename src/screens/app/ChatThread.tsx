@@ -21,6 +21,7 @@ import { clsx } from 'clsx';
 import { useSocket } from '../../hooks/useSocket';
 import { optimizedImage } from '../../lib/images';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import axios from 'axios';
 import { uploadImage } from '../../lib/upload';
 import { format } from 'date-fns';
@@ -98,11 +99,17 @@ export const ChatThread: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { profile } = useProfile();
   const { showToast } = useToast();
   const [messages, setMessages] = useState<any[]>([]);
   // Our internal DB id. Messages carry sender_id (a User.id), and the sender
   // object no longer exposes supabase_uid, so this is what we compare against.
-  const [meId, setMeId] = useState<string | null>(null);
+  const meId = profile?.id ?? null;
+  // Socket callbacks below are set up once per (socket, id) and would
+  // otherwise close over whatever meId was at that time - a ref always reads
+  // the latest value without forcing the socket listeners to re-subscribe.
+  const meIdRef = useRef<string | null>(null);
+  useEffect(() => { meIdRef.current = meId; }, [meId]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -133,13 +140,6 @@ export const ChatThread: React.FC = () => {
   }, [id]);
 
   useEffect(() => {
-    if (!user) return;
-    axios.get('/api/users/me')
-      .then(({ data }) => setMeId(data?.id ?? null))
-      .catch(err => console.error('Failed to resolve current user:', err));
-  }, [user]);
-
-  useEffect(() => {
     if (socket && id) {
       socket.emit('join_room', id);
       // Tell the server we've seen everything so far - it flips the sender's
@@ -152,15 +152,13 @@ export const ChatThread: React.FC = () => {
       });
 
       socket.on('messages_read', ({ reader_id }: { conversation_id: string; reader_id: string }) => {
-        setMeId(current => {
-          // Only the other participant reading flips our sent messages to "read".
-          if (reader_id !== current) {
-            setMessages(prev =>
-              prev.map(m => (m.sender_id === current && !m.read_at ? { ...m, read_at: new Date().toISOString() } : m))
-            );
-          }
-          return current;
-        });
+        const current = meIdRef.current;
+        // Only the other participant reading flips our sent messages to "read".
+        if (reader_id !== current) {
+          setMessages(prev =>
+            prev.map(m => (m.sender_id === current && !m.read_at ? { ...m, read_at: new Date().toISOString() } : m))
+          );
+        }
       });
 
       socket.on('room_error', (message: string) => {

@@ -16,6 +16,7 @@ import { JobThumbnail } from '../../components/JobThumbnail';
 import { JobCardSkeleton, SkeletonList } from '../../components/Skeleton';
 import { Search, Filter, Star, MapPin, Clock, MessageSquare, AlertTriangle, Check, Users, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import { formatDistanceToNow } from 'date-fns';
@@ -46,6 +47,7 @@ function timeOfDayGreeting() {
 
 export const Home: React.FC = () => {
   const { user } = useAuth();
+  const { profile } = useProfile();
   const navigate = useNavigate();
   const [greeting] = useState(timeOfDayGreeting);
   const userPosition = useUserLocation();
@@ -82,36 +84,28 @@ export const Home: React.FC = () => {
     fetchJobs();
   }, []);
 
-  // Ensure user is synced with local DB
-  useEffect(() => {
-    if (user) {
-      axios.get('/api/users/me').catch(err => console.error('Auto-sync failed:', err));
-    }
-  }, [user]);
-
   const handleStartChat = async (job: any) => {
     if (!user) {
       showNotice('Please sign in to message your neighbours.');
       return;
     }
+    // ProfileProvider fetches this once at sign-in and keeps it current -
+    // that fetch is also what creates the row in our DB on first sign-in, so
+    // nothing else here needs to "sync" it first.
+    if (!profile?.id) {
+      showNotice('Your profile is not set up yet. Finish it from Account.');
+      return;
+    }
+
+    if (profile.id === job.poster_id) {
+      showNotice("That's your own job - check Account > Your Jobs to see who applied.");
+      return;
+    }
 
     try {
-      // Find our user record first to get the internal ID
-      const { data: me } = await axios.get('/api/users/me');
-
-      if (!me || !me.id) {
-        showNotice('Your profile is not set up yet. Finish it from Account.');
-        return;
-      }
-
-      if (me.id === job.poster_id) {
-        showNotice("That's your own job - check Account > Your Jobs to see who applied.");
-        return;
-      }
-
       const { data: conversation } = await axios.post('/api/conversations', {
         job_id: job.id,
-        participant_ids: [me.id, job.poster_id]
+        participant_ids: [profile.id, job.poster_id]
       });
       navigate(`/chat/${conversation.id}`);
     } catch (err) {

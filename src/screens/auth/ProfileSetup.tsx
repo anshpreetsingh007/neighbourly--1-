@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, GlassCard } from '../../components/UI';
 import { User, MapPin, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { useToast } from '../../components/Toast';
 import axios from 'axios';
 import { uploadImage } from '../../lib/upload';
@@ -12,6 +13,7 @@ import { optimizedImage } from '../../lib/images';
 export const ProfileSetup: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { refetch } = useProfile();
   const { showToast } = useToast();
   const [firstName, setFirstName] = useState(
     user?.user_metadata?.first_name || (user?.user_metadata?.full_name || '').split(' ')[0] || ''
@@ -53,6 +55,10 @@ export const ProfileSetup: React.FC = () => {
         neighbourhood,
         avatar_url: avatarUrl
       });
+      // AuthGuard reads profile completeness from the shared cache rather
+      // than fetching it itself - without this it would still see the old
+      // (incomplete) profile and immediately redirect right back here.
+      await refetch();
       navigate('/');
     } catch (err) {
       console.error('Profile update failed:', err);

@@ -2,11 +2,13 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { useToast } from '../../components/Toast';
 import { useTheme, type ThemePreference } from '../../contexts/ThemeContext';
 import { GlassCard, Button } from '../../components/UI';
 import { Avatar } from '../../components/Avatar';
 import { Skeleton } from '../../components/Skeleton';
+import { uploadImage } from '../../lib/upload';
 import axios from 'axios';
 import { clsx } from 'clsx';
 import {
@@ -17,7 +19,9 @@ import {
   LogOut,
   ChevronRight,
   Star,
-  Briefcase,
+  Briefcase,
+  Camera,
+  Loader2,
   Sun,
   Moon,
   Monitor
@@ -28,26 +32,53 @@ export const Account: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { preference, setPreference } = useTheme();
-  const [profile, setProfile] = React.useState<any>(null);
-  // Without this the page paints its fallbacks first - "Neighbour",
-  // "Neighbourhood not set", a "?" avatar, 0 jobs - and then swaps them for
-  // the real values, which reads as the app showing wrong information.
-  const [isLoading, setIsLoading] = React.useState(true);
+  // The shared cache - already loaded by the time you can reach this screen
+  // (the sidebar/nav needs it too), so there is no fetch of our own here.
+  const { profile, isLoading, refetch } = useProfile();
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
+
+  // Split out from /api/users/me because these three aggregate queries are
+  // only ever displayed here - every other screen that reads the shared
+  // profile (the sidebar, the auth guard, chat) has no use for them, so
+  // making them part of the common payload meant paying for a rating average
+  // nobody was looking at on almost every navigation in the app.
+  const [stats, setStats] = React.useState<{ avg_rating: number | null; reviews_count: number; jobs_posted_count: number } | null>(null);
 
   React.useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user) return;
-      try {
-        const { data } = await axios.get(`/api/users/me`);
-        setProfile(data);
-      } catch (err) {
-        console.error('Failed to fetch profile:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchProfile();
+    if (!user) return;
+    axios.get('/api/users/me/stats').then(({ data }) => setStats(data)).catch(err => {
+      console.error('Failed to load account stats:', err);
+    });
   }, [user]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !profile) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const avatar_url = await uploadImage(file, 'neighbourly_avatars');
+      // The endpoint replaces the whole profile, so the rest of the current
+      // values have to come along with the one field that actually changed -
+      // sending only avatar_url would wipe first_name and fail the "name is
+      // required" check server-side.
+      await axios.post('/api/users/profile', {
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        neighbourhood: profile.neighbourhood,
+        bio: profile.bio,
+        avatar_url,
+      });
+      await refetch();
+      showToast('Profile photo updated.', 'success');
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      showToast('Could not upload that photo. Please try again.', 'error');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   // Settings and Notifications are real pages. Payments and ID Verification
   // are real roadmap items (the schema already has stripe_customer_id and
@@ -99,6 +130,17 @@ export const Account: React.FC = () => {
               <ShieldCheck className="w-5 h-5 text-slate-900" />
             </div>
           )}
+          <label
+            className="absolute -bottom-1 -left-1 bg-amber-accent p-2.5 rounded-2xl shadow-lg cursor-pointer hover:scale-110 transition-transform"
+            title="Change profile photo"
+          >
+            <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
+            {isUploadingAvatar ? (
+              <Loader2 className="w-4 h-4 text-slate-900 animate-spin" />
+            ) : (
+              <Camera className="w-4 h-4 text-slate-900" />
+            )}
+          </label>
         </div>
 
         <div>
@@ -110,20 +152,38 @@ export const Account: React.FC = () => {
 
         <div className="flex gap-4 w-full">
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-amber-accent">
-              {profile?.avg_rating ? profile.avg_rating.toFixed(1) : '—'}
-            </span>
-            <div className="flex gap-0.5">
-              {[1,2,3,4,5].map(i => <Star key={i} className="w-3 h-3 fill-amber-accent text-amber-accent" />)}
-            </div>
-            <span className="text-[10px] font-bold text-faint uppercase">
-              {profile?.reviews_count ? `${profile.reviews_count} Reviews` : 'No Ratings Yet'}
-            </span>
+            {stats ? (
+              <>
+                <span className="text-2xl font-display font-bold text-amber-accent">
+                  {stats.avg_rating ? stats.avg_rating.toFixed(1) : '—'}
+                </span>
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(i => <Star key={i} className="w-3 h-3 fill-amber-accent text-amber-accent" />)}
+                </div>
+                <span className="text-[10px] font-bold text-faint uppercase">
+                  {stats.reviews_count ? `${stats.reviews_count} Reviews` : 'No Ratings Yet'}
+                </span>
+              </>
+            ) : (
+              <div className="w-full space-y-1.5 py-1">
+                <Skeleton className="h-6 w-10 mx-auto rounded" />
+                <Skeleton className="h-2.5 w-16 mx-auto rounded" />
+              </div>
+            )}
           </GlassCard>
           <GlassCard className="flex-1 p-4 flex flex-col items-center gap-1">
-            <span className="text-2xl font-display font-bold text-sky-status">{profile?.jobs_posted_count ?? 0}</span>
-            <Briefcase className="w-4 h-4 text-sky-status" />
-            <span className="text-[10px] font-bold text-faint uppercase">Jobs Posted</span>
+            {stats ? (
+              <>
+                <span className="text-2xl font-display font-bold text-sky-status">{stats.jobs_posted_count}</span>
+                <Briefcase className="w-4 h-4 text-sky-status" />
+                <span className="text-[10px] font-bold text-faint uppercase">Jobs Posted</span>
+              </>
+            ) : (
+              <div className="w-full space-y-1.5 py-1">
+                <Skeleton className="h-6 w-10 mx-auto rounded" />
+                <Skeleton className="h-2.5 w-16 mx-auto rounded" />
+              </div>
+            )}
           </GlassCard>
         </div>
       </section>
