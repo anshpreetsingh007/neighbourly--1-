@@ -37,12 +37,22 @@
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-hover: rgba(255, 255, 255, 0.14);
   --panel-bg: rgba(11, 14, 26, 0.95);
-  --hairline: rgba(255, 255, 255, 0.10);
-
-  /* Loading placeholders need their own colours: --surface-1/2 are 4% and 8%
-     tints meant to sit *behind* content, and at that contrast a skeleton reads
-     as an empty box rather than something arriving. */
-  --skeleton-base: rgba(255, 255, 255, 0.09);
+  --hairline: rgba(255, 255, 255, 0.10);
+
+  /* Liquid-glass material. --glass-highlight is the bright hairline traced
+     along the top inner edge - the thing that actually sells "curved glass
+     catching light" rather than "semi-transparent div". --glass-sheen is a
+     soft directional glow in one corner, standing in for a light source;
+     without it the blur reads as flat frosted plastic. */
+  --glass-highlight: rgba(255, 255, 255, 0.45);
+  --glass-inner-line: rgba(255, 255, 255, 0.07);
+  --glass-sheen: rgba(255, 255, 255, 0.16);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+
+  /* Loading placeholders need their own colours: --surface-1/2 are 4% and 8%
+     tints meant to sit *behind* content, and at that contrast a skeleton reads
+     as an empty box rather than something arriving. */
+  --skeleton-base: rgba(255, 255, 255, 0.09);
   --skeleton-sheen: rgba(255, 255, 255, 0.20);
   --surface-1: rgba(255, 255, 255, 0.05);
   --surface-2: rgba(255, 255, 255, 0.10);
@@ -68,6 +78,15 @@
   --hairline: rgba(15, 23, 42, 0.10);
   --surface-1: rgba(15, 23, 42, 0.04);
   --surface-2: rgba(15, 23, 42, 0.08);
+
+  /* Same liquid-glass recipe as dark, tuned for light: the highlight has to
+     stay near-white to still read as specular rather than just "more white
+     card", and the ambient shadow is a cool navy instead of black so it does
+     not look like dirt under the glass. */
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-inner-line: rgba(15, 23, 42, 0.04);
+  --glass-sheen: rgba(255, 255, 255, 0.55);
+  --glass-shadow: rgba(15, 23, 42, 0.14);
 
   --skeleton-base: rgba(15, 23, 42, 0.09);
   --skeleton-sheen: rgba(255, 255, 255, 0.85);
@@ -118,19 +137,44 @@
   .skeleton::after { animation: none; }
 }
 
+/* Liquid-glass material (the iOS 18-style frosted panel), not just a
+   translucent div. Four things do the work together:
+     1. blur + saturate - saturation is what keeps colour behind the glass
+        rich instead of the blur washing it out to grey;
+     2. an inset top highlight - a bright 1px line along the inner top edge,
+        as if light is catching the curved surface of the glass;
+     3. a matching inset hairline all the way round, so the highlight reads
+        as one continuous edge rather than a line floating over a flat border;
+     4. a soft radial sheen from the top-left - a stand-in light source, since
+        uniform tint everywhere is what makes flat blur look like plastic.
+   All four layer through box-shadow/background so no extra markup or
+   pseudo-elements are needed - every .glass surface in the app gets this for
+   free, including the mobile bottom nav and every sheet/modal. */
 .glass {
-  @apply backdrop-blur-md border;
-  background: var(--glass-bg);
+  @apply backdrop-blur-xl backdrop-saturate-150 border;
+  background-color: var(--glass-bg);
+  background-image: radial-gradient(130% 100% at 10% -25%, var(--glass-sheen), transparent 55%);
   border-color: var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-highlight),
+    inset 0 0 0 1px var(--glass-inner-line),
+    0 12px 40px -14px var(--glass-shadow);
 }
 
 /* A deliberately light surface in BOTH themes - for chrome that sits over dark
    imagery (map overlays, photo captions) and pairs with dark text. Do not point
-   this at a theme token: the whole point is that it does not flip. */
+   this at a theme token: the whole point is that it does not flip. Same
+   liquid-glass recipe as .glass, just with its own fixed highlight/shadow
+   since it never goes dark. */
 .glass-light {
-  @apply backdrop-blur-md border;
-  background: rgba(255, 255, 255, 0.72);
+  @apply backdrop-blur-xl backdrop-saturate-150 border;
+  background-color: rgba(255, 255, 255, 0.72);
+  background-image: radial-gradient(130% 100% at 10% -25%, rgba(255, 255, 255, 0.6), transparent 55%);
   border-color: var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.04),
+    0 12px 40px -14px rgba(15, 23, 42, 0.18);
 }
 
 body {
