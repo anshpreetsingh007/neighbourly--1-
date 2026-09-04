@@ -24,6 +24,7 @@ import { ApplyModal } from '../../components/ApplyModal';
 import { PhotoLightbox } from '../../components/PhotoLightbox';
 import { useToast } from '../../components/Toast';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { basemapFor } from '../../lib/basemap';
 import { categoryIcon, categoryName } from '../../lib/categories';
 import { travelLabelBetween } from '../../lib/distance';
@@ -50,9 +51,9 @@ export const JobDetail: React.FC = () => {
   const { theme } = useTheme();
   const basemap = basemapFor(theme);
   const userPosition = useUserLocation();
+  const { profile: me } = useProfile();
 
   const [job, setJob] = useState<any | null>(null);
-  const [me, setMe] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
@@ -63,12 +64,8 @@ export const JobDetail: React.FC = () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [jobRes, meRes] = await Promise.all([
-        axios.get(`/api/jobs/${id}`),
-        axios.get('/api/users/me'),
-      ]);
-      setJob(jobRes.data);
-      setMe(meRes.data);
+      const { data } = await axios.get(`/api/jobs/${id}`);
+      setJob(data);
     } catch (err: any) {
       console.error('Failed to load job:', err);
       setLoadError(

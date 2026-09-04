@@ -12,6 +12,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { useToast } from '../../components/Toast';
 import { ApplyModal } from '../../components/ApplyModal';
 import { CATEGORY_ICONS, categoryIcon } from '../../lib/categories';
@@ -74,6 +75,7 @@ const MapCenterer = ({
 
 export const MapView: React.FC = () => {
   const { user } = useAuth();
+  const { profile } = useProfile();
   const { showToast } = useToast();
   const { theme } = useTheme();
   const basemap = basemapFor(theme);
@@ -162,22 +164,20 @@ export const MapView: React.FC = () => {
         return;
     }
 
+    if (!profile?.id) {
+        showToast('Your profile is not set up yet. Finish it from Account.');
+        return;
+    }
+
+    if (profile.id === job.poster_id) {
+        showToast("That's your own job - see who applied under Your Listings.");
+        return;
+    }
+
     try {
-        const { data: me } = await axios.get('/api/users/me');
-
-        if (!me || !me.id) {
-            showToast('Your profile is not set up yet. Finish it from Account.');
-            return;
-        }
-
-        if (me.id === job.poster_id) {
-            showToast("That's your own job - see who applied under Your Listings.");
-            return;
-        }
-
         const { data: conversation } = await axios.post('/api/conversations', {
             job_id: job.id,
-            participant_ids: [me.id, job.poster_id]
+            participant_ids: [profile.id, job.poster_id]
         });
         navigate(`/chat/${conversation.id}`);
     } catch (err) {

@@ -1,20 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ProfileProvider, useProfile } from './contexts/ProfileContext';
 import { Welcome } from './screens/auth/Welcome';
 import { SignIn } from './screens/auth/SignIn';
-import { Home } from './screens/app/Home';
-import { MapView } from './screens/app/MapView';
-import { PostJob } from './screens/app/PostJob';
-import { ChatList } from './screens/app/ChatList';
-import { ChatThread } from './screens/app/ChatThread';
-import { Account } from './screens/app/Account';
-import { Settings } from './screens/app/Settings';
-import { Notifications } from './screens/app/Notifications';
-import { MyJobs } from './screens/app/MyJobs';
-import { JobDetail } from './screens/app/JobDetail';
-import { ProfileSetup } from './screens/auth/ProfileSetup';
 import { AuthCallback } from './screens/auth/AuthCallback';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -22,35 +11,32 @@ import { ToastProvider } from './components/Toast';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotFound } from './screens/NotFound';
 
-const AuthGuard = ({ children }: { children: React.ReactNode }) => {
-  const { session, user, isLoading } = useAuth();
-  const location = useLocation();
-  const [isCheckingProfile, setIsCheckingProfile] = useState(true);
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
-  const hasCheckedOnce = useRef(false);
+// Code-split everything behind the auth wall. Map and Post Job alone pull in
+// react-leaflet, which used to ship to every visitor on first load whether or
+// not they ever opened the map - lazy() means the browser only fetches a
+// screen's JS the first time someone actually navigates to it.
+const Home = lazy(() => import('./screens/app/Home').then(m => ({ default: m.Home })));
+const MapView = lazy(() => import('./screens/app/MapView').then(m => ({ default: m.MapView })));
+const PostJob = lazy(() => import('./screens/app/PostJob').then(m => ({ default: m.PostJob })));
+const ChatList = lazy(() => import('./screens/app/ChatList').then(m => ({ default: m.ChatList })));
+const ChatThread = lazy(() => import('./screens/app/ChatThread').then(m => ({ default: m.ChatThread })));
+const Account = lazy(() => import('./screens/app/Account').then(m => ({ default: m.Account })));
+const Settings = lazy(() => import('./screens/app/Settings').then(m => ({ default: m.Settings })));
+const Notifications = lazy(() => import('./screens/app/Notifications').then(m => ({ default: m.Notifications })));
+const MyJobs = lazy(() => import('./screens/app/MyJobs').then(m => ({ default: m.MyJobs })));
+const JobDetail = lazy(() => import('./screens/app/JobDetail').then(m => ({ default: m.JobDetail })));
+const ProfileSetup = lazy(() => import('./screens/auth/ProfileSetup').then(m => ({ default: m.ProfileSetup })));
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    setIsCheckingProfile(true);
-    axios.get('/api/users/me')
-      .then(({ data }) => {
-        // Only a missing name blocks entry. Location is asked for later, at the
-        // point it actually buys the user something (posting or applying) -
-        // demanding it up front is friction before they have seen a single job.
-        if (!cancelled) setNeedsProfileSetup(!data?.first_name);
-      })
-      .catch(() => {
-        if (!cancelled) setNeedsProfileSetup(false);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        hasCheckedOnce.current = true;
-        setIsCheckingProfile(false);
-      });
-    return () => { cancelled = true; };
-    // Re-check on every route change so the flag cannot go stale.
-  }, [user, location.pathname]);
+const RouteFallback = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-10 h-10 border-4 border-amber-accent border-t-transparent rounded-full animate-spin" />
+  </div>
+);
+
+const AuthGuard = ({ children }: { children: React.ReactNode }) => {
+  const { session, isLoading } = useAuth();
+  const { profile, isLoading: isProfileLoading } = useProfile();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -64,8 +50,11 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/welcome" replace />;
   }
 
-  // First check of the session: wait for the answer rather than flashing the app.
-  if (isCheckingProfile && !hasCheckedOnce.current) {
+  // Wait for the one profile fetch ProfileProvider already kicked off rather
+  // than firing a second request of our own on every route change - refetch()
+  // (called by ProfileSetup/Settings right after they save) is what keeps
+  // this from ever going stale, not re-checking on navigation.
+  if (isProfileLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-12 h-12 border-4 border-amber-accent border-t-transparent rounded-full animate-spin" />
@@ -73,10 +62,11 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  // Only redirect on a settled answer. Acting while a re-check is in flight
-  // bounced users straight back here after saving - the flag still said
-  // "incomplete" because the fetch had not returned yet.
-  if (!isCheckingProfile && needsProfileSetup && location.pathname !== '/profile-setup') {
+  // Only a missing name blocks entry. Location is asked for later, at the
+  // point it actually buys the user something (posting or applying) -
+  // demanding it up front is friction before they have seen a single job.
+  const needsProfileSetup = !profile?.first_name;
+  if (needsProfileSetup && location.pathname !== '/profile-setup') {
     return <Navigate to="/profile-setup" replace />;
   }
 
@@ -89,7 +79,9 @@ export default function App() {
       <ThemeProvider>
         <ToastProvider>
         <AuthProvider>
+        <ProfileProvider>
         <Router>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Auth Routes */}
           <Route path="/welcome" element={<Welcome />} />
@@ -121,7 +113,9 @@ export default function App() {
           {/* Catch all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
         </Router>
+        </ProfileProvider>
           </AuthProvider>
         </ToastProvider>
       </ThemeProvider>

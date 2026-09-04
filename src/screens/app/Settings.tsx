@@ -3,44 +3,39 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { ChevronLeft, User, MapPin, Camera, Loader2 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
+import { useProfile } from '../../contexts/ProfileContext';
 import axios from 'axios';
 import { uploadImage } from '../../lib/upload';
 import { optimizedImage } from '../../lib/images';
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { showToast } = useToast();
+  // The shared cache, not a fetch of our own - it was already loaded before
+  // this screen could be reached (Account needs it too), so there is nothing
+  // left to wait on here.
+  const { profile, isLoading, refetch } = useProfile();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [neighbourhood, setNeighbourhood] = useState('');
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Seeds the form whenever the cached profile (first) arrives or changes -
+  // covers landing here directly (e.g. a refresh) as well as the normal case
+  // where it was already loaded.
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user) return;
-      try {
-        const { data } = await axios.get('/api/users/me');
-        setFirstName(data?.first_name || '');
-        setLastName(data?.last_name || '');
-        setNeighbourhood(data?.neighbourhood || '');
-        setBio(data?.bio || '');
-        setAvatarUrl(data?.avatar_url || '');
-      } catch (err) {
-        console.error('Failed to fetch profile:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchProfile();
-  }, [user]);
+    if (!profile) return;
+    setFirstName(profile.first_name || '');
+    setLastName(profile.last_name || '');
+    setNeighbourhood(profile.neighbourhood || '');
+    setBio(profile.bio || '');
+    setAvatarUrl(profile.avatar_url || '');
+  }, [profile]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,7 +54,7 @@ export const Settings: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!profile) return;
     if (!firstName.trim()) {
       setError('First name is required.');
       return;
@@ -78,6 +73,10 @@ export const Settings: React.FC = () => {
         bio,
         avatar_url: avatarUrl
       });
+      // Pushes the change out to every screen sharing the cache - the
+      // sidebar, Account, etc. - so none of them show the old name/photo
+      // until a full reload.
+      await refetch();
       showToast('Profile updated.', 'success');
       navigate('/account');
     } catch (err) {

@@ -8,6 +8,7 @@ import { Home, Map, PlusCircle, MessageSquare, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { clsx } from 'clsx';
 import { useAuth } from '../contexts/AuthContext';
+import { useProfile } from '../contexts/ProfileContext';
 import { useSocket } from '../hooks/useSocket';
 
 function cn(...inputs: any[]) {
@@ -24,22 +25,15 @@ export const Layout: React.FC = () => {
   const isImmersive = /^\/chat\/[^/]+$/.test(location.pathname);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-  // The card falls back to 'Your Account' and an initials avatar while the
-  // profile is in flight, so without this it paints a stranger's placeholder
-  // for a moment on every load.
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  // Shared with the rest of the app - Account, the auth guard, etc. - so this
+  // card never fires its own fetch and never goes stale after a Settings save.
+  const { profile, isLoading: isLoadingProfile } = useProfile();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const socket = useSocket('notifications');
 
   useEffect(() => {
     if (!user) return;
-    axios
-      .get('/api/users/me')
-      .then(({ data }) => setProfile(data))
-      .catch(() => {})
-      .finally(() => setIsLoadingProfile(false));
     axios.get('/api/notifications').then(({ data }) => setNotifications(data)).catch(() => {});
   }, [user]);
 

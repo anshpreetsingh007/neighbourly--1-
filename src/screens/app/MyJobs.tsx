@@ -19,6 +19,7 @@ import { GlassCard, Button } from '../../components/UI';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Avatar } from '../../components/Avatar';
 import { useToast } from '../../components/Toast';
+import { useProfile } from '../../contexts/ProfileContext';
 
 /**
  * date-fns throws on an invalid date, and an uncaught throw during render
@@ -50,6 +51,7 @@ export const MyJobs: React.FC = () => {
   const [pendingHire, setPendingHire] = useState<{ jobId: string; application: any } | null>(null);
   const [messagingId, setMessagingId] = useState<string | null>(null);
   const { showToast } = useToast();
+  const { profile } = useProfile();
 
   const loadJobs = useCallback(async () => {
     try {
@@ -69,12 +71,12 @@ export const MyJobs: React.FC = () => {
   }, [loadJobs]);
 
   const handleMessage = async (job: any, application: any) => {
+    if (!profile?.id) return;
     setMessagingId(application.id);
     try {
-      const { data: me } = await axios.get('/api/users/me');
       const { data: conversation } = await axios.post('/api/conversations', {
         job_id: job.id,
-        participant_ids: [me.id, application.helper_id],
+        participant_ids: [profile.id, application.helper_id],
       });
       navigate(`/chat/${conversation.id}`);
     } catch (err) {

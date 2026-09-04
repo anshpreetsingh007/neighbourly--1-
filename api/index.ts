@@ -948,25 +948,29 @@ async function startServer() {
   });
 
   // Users API
+  // Deliberately lean: requireAuth has already resolved this row, so this
+  // route just returns it. It's called on nearly every screen (profile
+  // completeness checks, "who am I" before starting a chat, the sidebar) -
+  // the aggregate stats below used to run here too, which meant three extra
+  // queries on every one of those calls even though only the Account page
+  // ever displays them. Those live at /api/users/me/stats now, fetched once
+  // by the one screen that needs them.
   app.get('/api/users/me', requireAuth, async (req, res) => {
+    res.json(currentUser(req));
+  });
+
+  app.get('/api/users/me/stats', requireAuth, async (req, res) => {
     try {
       const user = currentUser(req);
-
       const [jobs_posted_count, reviews_count, ratingAgg] = await Promise.all([
         prisma.job.count({ where: { poster_id: user.id } }),
         prisma.review.count({ where: { reviewee_id: user.id } }),
         prisma.review.aggregate({ where: { reviewee_id: user.id }, _avg: { rating: true } })
       ]);
-
-      res.json({
-        ...user,
-        jobs_posted_count,
-        reviews_count,
-        avg_rating: ratingAgg._avg.rating
-      });
+      res.json({ jobs_posted_count, reviews_count, avg_rating: ratingAgg._avg.rating });
     } catch (err) {
-      console.error('Failed to fetch/sync user:', err);
-      res.status(500).json({ error: 'Failed to fetch user' });
+      console.error('Failed to fetch user stats:', err);
+      res.status(500).json({ error: 'Failed to fetch user stats' });
     }
   });
 
