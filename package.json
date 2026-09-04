@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "loadtest": "node scripts/loadtest.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

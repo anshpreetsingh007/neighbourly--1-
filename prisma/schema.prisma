@@ -139,6 +139,8 @@ model Review {
   is_published          Boolean  @default(false)
   created_at            DateTime @default(now())
   reviewee              User     @relation("Reviewee", fields: [reviewee_id], references: [id])
+
+  @@unique([job_id, reviewer_id])
   reviewer              User     @relation("Reviewer", fields: [reviewer_id], references: [id])
   job                   Job      @relation(fields: [job_id], references: [id])
 }

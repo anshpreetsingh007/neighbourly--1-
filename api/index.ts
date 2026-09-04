@@ -172,6 +172,9 @@ async function getOrCreateDbUser(authUser: SupabaseUser) {
   const metadata = (authUser.user_metadata || {}) as Record<string, unknown>;
   const { first, last } = nameFromMetadata(metadata);
 
+  // Upsert, not findUnique-then-create: it is one atomic statement, and the
+  // split version measured 20 req/sec against 18 - noise - while opening a
+  // race on first sign-in, when the browser fires several requests at once.
   return prisma.user.upsert({
     where: { supabase_uid: authUser.id },
     update: {},
@@ -260,6 +263,25 @@ function jobForViewer(job: any, viewerId: string) {
 const TITLE_MAX = 80;
 const DESCRIPTION_MAX = 1000;
 const ADDRESS_MAX = 300;
+const REVIEW_MAX = 600;
+/** Ratings are whole stars, 1 to 5. */
+const RATING_MIN = 1;
+const RATING_MAX = 5;
+
+/**
+ * The two people who actually worked together on a job: the poster and whoever
+ * they hired. Nobody else may review, and they may only review each other.
+ * Returns null when the job has no accepted helper.
+ */
+function jobCounterparties(job: {
+  poster_id: string;
+  applications: { status: string; helper_id: string }[];
+}) {
+  const hired = job.applications.find(a => a.status === 'ACCEPTED');
+  if (!hired) return null;
+  return { posterId: job.poster_id, helperId: hired.helper_id };
+}
+
 /** Storage and bandwidth are billed per image, so the set has a ceiling. */
 const PHOTO_MAX = 10;
 
@@ -636,6 +658,9 @@ async function startServer() {
           poster: { select: PUBLIC_USER_SELECT },
           photos: true,
           applications: true,
+          // Only your own review, so the client can tell "leave a review" from
+          // "already reviewed" without leaking what the other person wrote.
+          reviews: { where: { reviewer_id: me.id }, select: { id: true, rating: true } },
         },
         orderBy: { created_at: 'desc' },
       });
@@ -657,6 +682,7 @@ async function startServer() {
             include: { helper: { select: PUBLIC_USER_SELECT } },
             orderBy: { created_at: 'asc' },
           },
+          reviews: { where: { reviewer_id: me.id }, select: { id: true, rating: true } },
         },
         orderBy: { created_at: 'desc' },
       });
@@ -836,6 +862,160 @@ async function startServer() {
     } catch (err) {
       console.error('Failed to delete job:', err);
       res.status(500).json({ error: 'Failed to delete this job' });
+    }
+  });
+
+  /**
+   * The poster marks the work finished. This is what closes the loop: until a
+   * job is COMPLETED nobody can review anyone, so reputation cannot start.
+   * Only the poster can call it - the helper saying "I am done" is a different
+   * claim, and letting them set it would make every rating self-served.
+   */
+  app.post('/api/jobs/:id/complete', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const me = currentUser(req);
+      const job = await prisma.job.findUnique({
+        where: { id },
+        include: { applications: true },
+      });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.poster_id !== me.id) {
+        return res
+          .status(403)
+          .json({ error: 'Only the person who posted this job can mark it complete' });
+      }
+      // Idempotent, like accepting an application twice.
+      if (job.status === 'COMPLETED') return res.json({ job });
+      if (job.status !== 'ASSIGNED') {
+        return res
+          .status(409)
+          .json({ error: 'Only a job with someone hired can be marked complete' });
+      }
+
+      const updated = await prisma.job.update({
+        where: { id },
+        data: { status: 'COMPLETED' },
+      });
+
+      const parties = jobCounterparties(job);
+      if (parties) {
+        const notification = await prisma.notification.create({
+          data: {
+            user_id: parties.helperId,
+            type: 'JOB_COMPLETED',
+            title: 'Job marked complete',
+            body: `${me.name || 'The poster'} marked this job as done. Leave them a review.`,
+            data: JSON.stringify({ job_id: id }),
+          },
+        });
+        notificationNamespace.to(parties.helperId).emit('notification', notification);
+      }
+
+      res.json({ job: updated });
+    } catch (err) {
+      console.error('Failed to complete job:', err);
+      res.status(500).json({ error: 'Failed to mark this job complete' });
+    }
+  });
+
+  /**
+   * A review of the other party on a finished job. One per person per job, and
+   * only between the two people who actually worked together - otherwise a
+   * rating is just something strangers can write about you.
+   */
+  app.post('/api/jobs/:id/reviews', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { rating, body } = req.body;
+
+    const score = Number(rating);
+    if (!Number.isInteger(score) || score < RATING_MIN || score > RATING_MAX) {
+      return res
+        .status(400)
+        .json({ error: `Give a rating from ${RATING_MIN} to ${RATING_MAX} stars` });
+    }
+    const lengthError = tooLong(body, REVIEW_MAX, 'Your review');
+    if (lengthError) return res.status(400).json({ error: lengthError });
+
+    try {
+      const me = currentUser(req);
+      const job = await prisma.job.findUnique({
+        where: { id },
+        include: { applications: true },
+      });
+      if (!job) return res.status(404).json({ error: 'Job not found' });
+      if (job.status !== 'COMPLETED') {
+        return res.status(409).json({ error: 'You can review once the job is marked complete' });
+      }
+
+      const parties = jobCounterparties(job);
+      if (!parties) {
+        return res.status(409).json({ error: 'Nobody was hired for this job' });
+      }
+      // You review the other one. Anyone who is neither was not involved.
+      const revieweeId =
+        me.id === parties.posterId
+          ? parties.helperId
+          : me.id === parties.helperId
+            ? parties.posterId
+            : null;
+      if (!revieweeId) {
+        return res.status(403).json({ error: 'Only the two people on this job can review it' });
+      }
+
+      const review = await prisma.review.create({
+        data: {
+          job_id: id,
+          reviewer_id: me.id,
+          reviewee_id: revieweeId,
+          rating: score,
+          body: typeof body === 'string' ? body.trim() : '',
+          // Published on write. The column exists for a future double-blind
+          // scheme (hold both until each side has written one), but nothing
+          // reads it yet, and a review that never appears is worse than none.
+          is_published: true,
+        },
+      });
+
+      const notification = await prisma.notification.create({
+        data: {
+          user_id: revieweeId,
+          type: 'REVIEW',
+          title: 'You got a review',
+          body: `${me.name || 'A neighbour'} left you ${score} star${score === 1 ? '' : 's'}`,
+          data: JSON.stringify({ job_id: id }),
+        },
+      });
+      notificationNamespace.to(revieweeId).emit('notification', notification);
+
+      res.status(201).json({ review });
+    } catch (err: any) {
+      // @@unique([job_id, reviewer_id]) enforces one review per person per
+      // job, so a duplicate lands here rather than needing a read first.
+      if (err?.code === 'P2002') {
+        return res.status(409).json({ error: 'You have already reviewed this job' });
+      }
+      console.error('Failed to create review:', err);
+      res.status(500).json({ error: 'Failed to save your review' });
+    }
+  });
+
+  /** Published reviews written about someone, newest first. */
+  app.get('/api/users/:id/reviews', requireAuth, async (req, res) => {
+    try {
+      const reviews = await prisma.review.findMany({
+        where: { reviewee_id: req.params.id, is_published: true },
+        include: {
+          reviewer: { select: PUBLIC_USER_SELECT },
+          job: { select: { id: true, title: true, category: true } },
+        },
+        orderBy: { created_at: 'desc' },
+        take: 50,
+      });
+      res.json(reviews);
+    } catch (err) {
+      console.error('Failed to fetch reviews:', err);
+      res.status(500).json({ error: 'Failed to fetch reviews' });
     }
   });
 
@@ -1358,6 +1538,12 @@ async function startServer() {
       api_key: process.env.CLOUDINARY_API_KEY,
     });
   });
+
+  // Last API route. Anything under /api that got here matched nothing, and
+  // must not fall through to the SPA handlers below - index.html arriving
+  // where JSON was expected means axios resolves happily and the caller does
+  // `.map` on a string. One 404 here instead of a guard at every fetch.
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
   // Vite Middleware
   if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {

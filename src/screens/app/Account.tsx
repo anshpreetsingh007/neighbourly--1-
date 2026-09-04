@@ -43,13 +43,32 @@ export const Account: React.FC = () => {
   // making them part of the common payload meant paying for a rating average
   // nobody was looking at on almost every navigation in the app.
   const [stats, setStats] = React.useState<{ avg_rating: number | null; reviews_count: number; jobs_posted_count: number } | null>(null);
+  const [reviews, setReviews] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     if (!user) return;
-    axios.get('/api/users/me/stats').then(({ data }) => setStats(data)).catch(err => {
-      console.error('Failed to load account stats:', err);
-    });
+    axios
+      .get('/api/users/me/stats')
+      .then(({ data }) => setStats(data))
+      // Zeroes rather than null: leaving it null skeletons these two cards
+      // forever, which looks more broken than an honest empty profile.
+      .catch(err => {
+        console.error('Failed to load account stats:', err);
+        setStats({ avg_rating: null, reviews_count: 0, jobs_posted_count: 0 });
+      });
   }, [user]);
+
+  // Keyed by user id, so it waits for the shared profile. A failure here is
+  // not worth surfacing - the rating average above still renders.
+  React.useEffect(() => {
+    if (!profile?.id) return;
+    axios
+      .get(`/api/users/${profile.id}/reviews`)
+      // Not `setReviews(data)`: when the route is missing the SPA catch-all
+      // answers with index.html, and a string survives .slice() to die on .map.
+      .then(({ data }) => setReviews(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [profile?.id]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,6 +205,50 @@ export const Account: React.FC = () => {
             )}
           </GlassCard>
         </div>
+
+        {/* The stat cards above are only a number until someone can read the
+            actual words. Three most recent, newest first. */}
+        {reviews.length > 0 && (
+          <div className="w-full space-y-3 pt-2">
+            <h2 className="text-left text-[10px] font-black uppercase tracking-widest text-muted">
+              What neighbours said
+            </h2>
+            {reviews.slice(0, 3).map((review: any) => (
+              <GlassCard key={review.id} className="p-4 text-left space-y-2">
+                <div className="flex items-center gap-3">
+                  <Avatar
+                    name={review.reviewer?.name}
+                    avatarUrl={review.reviewer?.avatar_url}
+                    seed={review.reviewer?.id}
+                    size="sm"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm truncate">
+                      {review.reviewer?.name || 'Neighbour'}
+                    </p>
+                    <p className="text-faint text-[10px] font-medium truncate">
+                      {review.job?.title}
+                    </p>
+                  </div>
+                  <div className="flex gap-0.5 shrink-0">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Star
+                        key={i}
+                        className={clsx(
+                          'w-3 h-3',
+                          i <= review.rating ? 'fill-amber-accent text-amber-accent' : 'text-faint'
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+                {review.body && (
+                  <p className="text-body text-sm leading-relaxed">{review.body}</p>
+                )}
+              </GlassCard>
+            ))}
+          </div>
+        )}
       </section>
       )}
 

@@ -14,11 +14,13 @@ import {
   MapPin,
   MessageSquare,
   Users,
+  Star,
 } from 'lucide-react';
 import { GlassCard, Button } from '../../components/UI';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Avatar } from '../../components/Avatar';
 import { useToast } from '../../components/Toast';
+import { ReviewModal } from '../../components/ReviewModal';
 import { useProfile } from '../../contexts/ProfileContext';
 
 /**
@@ -50,6 +52,8 @@ export const MyJobs: React.FC = () => {
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingHire, setPendingHire] = useState<{ jobId: string; application: any } | null>(null);
   const [messagingId, setMessagingId] = useState<string | null>(null);
+  const [completingJob, setCompletingJob] = useState<any | null>(null);
+  const [reviewing, setReviewing] = useState<{ job: any; helper: any } | null>(null);
   const { showToast } = useToast();
   const { profile } = useProfile();
 
@@ -99,6 +103,19 @@ export const MyJobs: React.FC = () => {
       setPendingHire(null);
     } finally {
       setAcceptingId(null);
+    }
+  };
+
+  const handleComplete = async (job: any) => {
+    try {
+      await axios.post(`/api/jobs/${job.id}/complete`);
+      setCompletingJob(null);
+      await loadJobs();
+      showToast('Job marked complete. You can review them now.', 'success');
+    } catch (err: any) {
+      console.error('Failed to complete job:', err);
+      setCompletingJob(null);
+      showToast(err.response?.data?.error || 'Could not mark that job complete.', 'error');
     }
   };
 
@@ -162,7 +179,9 @@ export const MyJobs: React.FC = () => {
                       'shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border',
                       job.status === 'OPEN'
                         ? 'bg-sky-status/15 text-sky-status border-sky-status/30'
-                        : 'bg-emerald-status/20 text-emerald-status border-emerald-status/30'
+                        : job.status === 'COMPLETED'
+                          ? 'bg-surface-2 text-muted border-hairline'
+                          : 'bg-emerald-status/20 text-emerald-status border-emerald-status/30'
                     )}
                   >
                     {job.status}
@@ -255,10 +274,63 @@ export const MyJobs: React.FC = () => {
                     ))}
                   </div>
                 )}
+
+                {/* Closing the job out. Without this the whole thing dead-ends
+                    at "hired" - nobody can be reviewed, so no reputation ever
+                    accumulates and every helper looks equally unknown. */}
+                {accepted && job.status === 'ASSIGNED' && (
+                  <Button
+                    className="w-full rounded-xl text-xs py-3"
+                    onClick={() => setCompletingJob(job)}
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" /> Mark as complete
+                  </Button>
+                )}
+
+                {accepted && job.status === 'COMPLETED' && (
+                  (job.reviews || []).length > 0 ? (
+                    <div className="flex items-center justify-center gap-2 text-muted text-xs font-bold uppercase tracking-widest py-2">
+                      <Star className="w-4 h-4 fill-amber-accent text-amber-accent" />
+                      You rated them {job.reviews[0].rating}/5
+                    </div>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      className="w-full rounded-xl text-xs py-3 border border-hairline"
+                      onClick={() => setReviewing({ job, helper: accepted.helper })}
+                    >
+                      <Star className="w-4 h-4 mr-2" /> Review {accepted.helper?.name || 'them'}
+                    </Button>
+                  )
+                )}
               </GlassCard>
             );
           })}
         </div>
+      )}
+
+      {completingJob && (
+        <ConfirmDialog
+          title="Mark this job as complete?"
+          body="Do this once the work is actually finished. It closes the job and lets you and your helper review each other - which cannot be undone."
+          confirmLabel="Mark complete"
+          onCancel={() => setCompletingJob(null)}
+          onConfirm={() => handleComplete(completingJob)}
+        />
+      )}
+
+      {reviewing && (
+        <ReviewModal
+          jobId={reviewing.job.id}
+          jobTitle={reviewing.job.title}
+          about={reviewing.helper || {}}
+          onClose={() => setReviewing(null)}
+          onSubmitted={() => {
+            setReviewing(null);
+            loadJobs();
+            showToast('Thanks - your review is on their profile.', 'success');
+          }}
+        />
       )}
 
       {pendingHire && (

@@ -36,7 +36,9 @@
   --glass-bg: rgba(255, 255, 255, 0.08);
   --glass-border: rgba(255, 255, 255, 0.18);
   --glass-hover: rgba(255, 255, 255, 0.14);
-  --panel-bg: rgba(11, 14, 26, 0.95);
+  /* Tinted toward the page gradient's #1e1b4b. A neutral near-black panel
+     reads as a different app pasted over the purple background. */
+  --panel-bg: rgba(26, 23, 58, 0.97);
   --hairline: rgba(255, 255, 255, 0.10);
 
   /* Liquid-glass material. --glass-highlight is the bright hairline traced

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { GlassCard, Button } from '../../components/UI';
 import { ApplyModal } from '../../components/ApplyModal';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ReviewModal } from '../../components/ReviewModal';
 import {
   FilterSheet,
   EMPTY_FILTERS,
@@ -61,6 +62,7 @@ export const Home: React.FC = () => {
   const [isLoadingApplied, setIsLoadingApplied] = useState(false);
   const [applyingTo, setApplyingTo] = useState<any | null>(null);
   const [deletingJob, setDeletingJob] = useState<any | null>(null);
+  const [reviewingJob, setReviewingJob] = useState<any | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: 'success' | 'warn' } | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -202,7 +204,7 @@ export const Home: React.FC = () => {
   const filteredJobs = jobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch && matchesFilters(job, filters);
+    return matchesSearch && matchesFilters(job, filters, userPosition);
   }).sort(byUrgencyThenNewest);
 
   const activeFilterCount = countActiveFilters(filters);
@@ -242,8 +244,11 @@ export const Home: React.FC = () => {
           aria-label="Go to account"
         >
           <Avatar
-            name={user?.user_metadata?.full_name}
-            avatarUrl={user?.user_metadata?.avatar_url}
+            // Profile first: an avatar uploaded in Settings is saved to our
+            // own User row, never back into Supabase's user_metadata, so
+            // reading metadata alone showed initials next to a real photo.
+            name={profile?.name || user?.user_metadata?.full_name}
+            avatarUrl={profile?.avatar_url || user?.user_metadata?.avatar_url}
             seed={user?.id}
             size="lg"
           />
@@ -282,6 +287,7 @@ export const Home: React.FC = () => {
         value={filters}
         onChange={setFilters}
         onClose={() => setShowFilters(false)}
+        hasLocation={!!userPosition}
       />
 
       {/* Jobs Feed */}
@@ -385,7 +391,13 @@ export const Home: React.FC = () => {
                                 : 'bg-amber-accent/15 border-amber-accent/30 text-amber-accent'
                           )}
                         >
-                          {hired ? 'Hired' : declined ? 'Not chosen' : 'Pending'}
+                          {hired && job.status === 'COMPLETED'
+                        ? 'Done'
+                        : hired
+                          ? 'Hired'
+                          : declined
+                            ? 'Not chosen'
+                            : 'Pending'}
                         </span>
                       </button>
 
@@ -393,14 +405,34 @@ export const Home: React.FC = () => {
                         <span className="text-muted text-xs font-bold">
                           Your price · {formatMoney(application?.proposed_price)}
                         </span>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="rounded-xl text-xs"
-                          onClick={() => handleStartChat(job)}
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" /> Message
-                        </Button>
+                        {/* Once the poster marks the work done, the helper's
+                            half of the review pair opens up. Reviewing runs
+                            both ways or the ratings only ever describe helpers. */}
+                        {hired && job.status === 'COMPLETED' ? (
+                          (job.reviews || []).length > 0 ? (
+                            <span className="flex items-center gap-1.5 text-muted text-[11px] font-black uppercase tracking-widest">
+                              <Star className="w-3.5 h-3.5 fill-amber-accent text-amber-accent" />
+                              Rated {job.reviews[0].rating}/5
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="rounded-xl text-xs"
+                              onClick={() => setReviewingJob(job)}
+                            >
+                              <Star className="w-4 h-4 mr-2" /> Review
+                            </Button>
+                          )
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="rounded-xl text-xs"
+                            onClick={() => handleStartChat(job)}
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" /> Message
+                          </Button>
+                        )}
                       </div>
                     </GlassCard>
                   );
@@ -603,6 +635,22 @@ export const Home: React.FC = () => {
           confirmLabel="Delete job"
           onCancel={() => setDeletingJob(null)}
           onConfirm={() => handleDeleteJob(deletingJob)}
+        />
+      )}
+
+      {reviewingJob && (
+        <ReviewModal
+          jobId={reviewingJob.id}
+          jobTitle={reviewingJob.title}
+          about={reviewingJob.poster || {}}
+          onClose={() => setReviewingJob(null)}
+          onSubmitted={() => {
+            setReviewingJob(null);
+            // Refetch rather than patching state: the badge, the button and
+            // the card border all key off the same job.
+            setAppliedJobs(null);
+            showNotice('Thanks - your review is on their profile.', 'success');
+          }}
         />
       )}
 
