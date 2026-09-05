@@ -3,7 +3,9 @@
 
 @theme {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Syne", sans-serif;
+  /* Real fallbacks, so a blocked or slow font request still renders something
+     deliberate rather than dropping straight to Times/Arial. */
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
   
   --color-amber-accent: #F5A623;
   --color-emerald-status: #10b981;
@@ -191,11 +193,14 @@ body {
 /* Keyboard focus indicator. Most buttons in this app are raw <button>
    elements with their own bespoke rounded shapes rather than the shared
    Button component, so a single global rule is what actually makes every
-   one of them show up for keyboard navigation instead of just a handful. */
+   one of them show up for keyboard navigation instead of just a handful.
+
+   Inputs and textareas are deliberately NOT in this list: every one of them
+   already draws its own focus ring, and adding an offset outline on top drew
+   a second hard-edged box that did not follow the field's rounding - very
+   visible on the pill-shaped map search bar. */
 a:focus-visible,
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
 [role="button"]:focus-visible {
   outline: 2px solid var(--color-amber-accent);
   outline-offset: 2px;

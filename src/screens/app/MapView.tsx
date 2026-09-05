@@ -273,30 +273,38 @@ export const MapView: React.FC = () => {
         </MapContainer>
       </div>
 
-      {/* Header Overlays */}
-      <div className="absolute top-8 left-6 right-6 flex gap-4 z-10 pointer-events-none">
-        <div className="relative flex-1 pointer-events-auto group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-faint group-focus-within:text-amber-accent transition-colors" />
-          <input
-            type="text"
-            placeholder="Search local jobs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full glass rounded-3xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium text-strong"
-          />
-        </div>
-        <div className="pointer-events-auto">
+      {/* Header Overlays.
+          Capped and centred rather than stretched edge to edge - on a desktop
+          window the full-bleed version was a ~1400px input for a few words.
+          These float over map tiles rather than the app's own background, so
+          they use the near-opaque panel surface instead of .glass: a
+          translucent blur over arbitrary map colour smears into an unreadable
+          rainbow behind the text. */}
+      <div className="absolute top-6 left-4 right-4 sm:left-6 sm:right-6 z-10 pointer-events-none">
+        <div className="max-w-xl mx-auto flex gap-3">
+          <div className="relative flex-1 pointer-events-auto group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted group-focus-within:text-amber-accent transition-colors" />
+            <input
+              type="text"
+              placeholder="Search local jobs..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-panel backdrop-blur-xl border border-hairline rounded-full py-3.5 pl-12 pr-5 shadow-lg focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all font-medium text-strong"
+            />
+          </div>
+          <div className="pointer-events-auto">
             <Button
               variant="secondary"
               aria-label="Filter by category"
-              className="p-5 rounded-3xl border border-hairline bg-panel relative"
+              className="h-full px-4 rounded-full border border-hairline bg-panel backdrop-blur-xl shadow-lg relative"
               onClick={() => setShowFilters(true)}
             >
-            <Filter className="w-6 h-6" />
-            {activeCategory && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">1</span>
-            )}
+              <Filter className="w-5 h-5" />
+              {activeCategory && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">1</span>
+              )}
             </Button>
+          </div>
         </div>
       </div>
 

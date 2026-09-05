@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "loadtest": "node scripts/loadtest.mjs"
+    "loadtest": "node scripts/loadtest.mjs",
+    "e2e": "dotenv -e .env.local -- node scripts/e2e.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

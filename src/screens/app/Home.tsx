@@ -255,14 +255,15 @@ export const Home: React.FC = () => {
         </button>
       </header>
 
-      {/* Search & Filter */}
-      <div className="flex gap-4">
+      {/* Search & Filter. Same proportions as the Chat and Map search fields -
+          these were three different heights for the same control. */}
+      <div className="flex gap-3">
         <div className="relative flex-1 group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-faint group-focus-within:text-amber-accent transition-colors" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted group-focus-within:text-amber-accent transition-colors" />
           <input
             type="text"
             placeholder="Search for local help..."
-            className="w-full glass rounded-2xl py-5 pl-14 pr-6 focus:outline-none focus:ring-2 focus:ring-amber-accent/30 transition-all font-medium placeholder:text-faint"
+            className="w-full glass rounded-full py-3.5 pl-12 pr-5 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all font-medium placeholder:text-faint"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -270,10 +271,10 @@ export const Home: React.FC = () => {
         <Button
           variant="secondary"
           aria-label="Filters"
-          className="p-5 rounded-2xl border border-hairline relative"
+          className="h-full px-4 rounded-full border border-hairline relative"
           onClick={() => setShowFilters(true)}
         >
-          <Filter className="w-6 h-6" />
+          <Filter className="w-5 h-5" />
           {activeFilterCount > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-accent text-slate-900 text-[10px] font-black rounded-full flex items-center justify-center">
               {activeFilterCount}

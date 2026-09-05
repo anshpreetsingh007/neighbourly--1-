@@ -35,7 +35,7 @@ const RouteFallback = () => (
 
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const { session, isLoading } = useAuth();
-  const { profile, isLoading: isProfileLoading } = useProfile();
+  const { profile, isLoading: isProfileLoading, loadFailed } = useProfile();
   const location = useLocation();
 
   if (isLoading) {
@@ -65,7 +65,12 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   // Only a missing name blocks entry. Location is asked for later, at the
   // point it actually buys the user something (posting or applying) -
   // demanding it up front is friction before they have seen a single job.
-  const needsProfileSetup = !profile?.first_name;
+  //
+  // Fails open on a failed fetch: a null profile because the request errored
+  // is not the same as a profile with no name, and treating them the same
+  // sends an existing user with a complete profile to "Complete Profile" with
+  // empty fields the moment one request loses the network.
+  const needsProfileSetup = !loadFailed && !profile?.first_name;
   if (needsProfileSetup && location.pathname !== '/profile-setup') {
     return <Navigate to="/profile-setup" replace />;
   }

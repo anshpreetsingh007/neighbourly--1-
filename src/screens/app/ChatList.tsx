@@ -57,14 +57,14 @@ export const ChatList: React.FC = () => {
         <h1 className="text-3xl font-display font-bold">Messages</h1>
       </header>
 
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-faint" />
+      <div className="relative group">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted group-focus-within:text-amber-accent transition-colors" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search conversations..."
-          className="w-full glass rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all font-medium"
+          className="w-full glass rounded-full py-3.5 pl-12 pr-5 focus:outline-none focus:ring-2 focus:ring-amber-accent/50 transition-all font-medium placeholder:text-faint"
         />
       </div>
 

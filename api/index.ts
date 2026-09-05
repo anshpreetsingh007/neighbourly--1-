@@ -12,6 +12,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import type { RequestHandler, Request } from 'express';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { CATEGORIES } from '../src/lib/categories';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,6 +52,69 @@ interface AuthedRequest extends Request {
 }
 
 /**
+ * Short-lived cache of verified access tokens.
+ *
+ * supabase.auth.getUser() is an HTTPS round trip to Supabase on every single
+ * authenticated request - it was the largest fixed cost in the app, paid
+ * before any route did its own work, on every feed load, every poll, every
+ * navigation. The token is signed and time-limited, so re-verifying the same
+ * string seconds later cannot produce a different answer.
+ *
+ * Only the token -> Supabase user mapping is cached. The local DB row is still
+ * read fresh on every request, so a profile edit or a ban takes effect on the
+ * very next call rather than whenever this expires.
+ */
+const TOKEN_CACHE_TTL_MS = 60_000;
+const TOKEN_CACHE_MAX = 5_000;
+const tokenCache = new Map<string, { user: SupabaseUser; expiresAt: number }>();
+
+/**
+ * The `exp` claim, read WITHOUT verifying the signature. Only ever used to
+ * shorten a cache lifetime - identity always comes from the verified
+ * getUser() response - so a forged payload can shrink its own cache entry and
+ * nothing else.
+ */
+function tokenExpiryMs(token: string): number | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const json = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return typeof json?.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function cachedUserFor(token: string): SupabaseUser | null {
+  const hit = tokenCache.get(token);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    tokenCache.delete(token);
+    return null;
+  }
+  return hit.user;
+}
+
+function cacheVerifiedUser(token: string, user: SupabaseUser) {
+  // Never cache past the token's own expiry, so a token that dies in ten
+  // seconds is not honoured for sixty.
+  const exp = tokenExpiryMs(token);
+  const expiresAt = Math.min(Date.now() + TOKEN_CACHE_TTL_MS, exp ?? Infinity);
+  if (expiresAt <= Date.now()) return;
+
+  // Bounded so a stream of distinct tokens cannot grow this without limit.
+  if (tokenCache.size >= TOKEN_CACHE_MAX) {
+    for (const [key, value] of tokenCache) {
+      if (value.expiresAt <= Date.now()) tokenCache.delete(key);
+    }
+    if (tokenCache.size >= TOKEN_CACHE_MAX) {
+      tokenCache.delete(tokenCache.keys().next().value as string);
+    }
+  }
+  tokenCache.set(token, { user, expiresAt });
+}
+
+/**
  * Verifies the caller's Supabase access token and attaches the resolved user to
  * the request. Fails closed: a missing token, an invalid token, or missing server
  * config all result in a rejection rather than an unauthenticated pass-through.
@@ -71,19 +135,25 @@ const requireAuth: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const { data, error } = await supabaseAuth.auth.getUser(token);
-    if (error || !data?.user) {
-      return res.status(401).json({ error: 'Invalid or expired token' });
+    let authUser = cachedUserFor(token);
+    if (!authUser) {
+      const { data, error } = await supabaseAuth.auth.getUser(token);
+      if (error || !data?.user) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+      authUser = data.user;
+      cacheVerifiedUser(token, authUser);
     }
     // Resolve the local row once here so every route shares it, and so a ban is
     // enforced on every authenticated path - including /api/uploads/sign, which
-    // does not otherwise need a DB user.
-    const dbUser = await getOrCreateDbUser(data.user);
+    // does not otherwise need a DB user. Deliberately not cached: a ban or a
+    // profile edit has to apply on the next request, not a minute later.
+    const dbUser = await getOrCreateDbUser(authUser);
     if (dbUser.is_banned) {
       return res.status(403).json({ error: 'This account has been suspended' });
     }
 
-    (req as AuthedRequest).authUser = data.user;
+    (req as AuthedRequest).authUser = authUser;
     (req as AuthedRequest).dbUser = dbUser;
     next();
   } catch (err) {
@@ -225,6 +295,7 @@ function coarseArea(address?: string | null) {
  * has been ACCEPTED.
  */
 function jobForViewer(job: any, viewerId: string) {
+  const { _count, ...rest } = job;
   const isPoster = job.poster_id === viewerId;
   const all = job.applications || [];
   const mine = all.find((a: any) => a.helper_id === viewerId);
@@ -232,10 +303,15 @@ function jobForViewer(job: any, viewerId: string) {
 
   // Who else applied, and what they bid, is the poster's business alone.
   // Everyone else sees only their own application plus a count.
+  //
+  // The count comes from _count when the caller selected it, because the feed
+  // no longer loads every application row just to call .length on them - on a
+  // job with 40 applicants that was 40 rows fetched and thrown away, per job,
+  // per feed load.
   const base = {
-    ...job,
+    ...rest,
     applications: isPoster ? all : mine ? [mine] : [],
-    application_count: all.length,
+    application_count: _count?.applications ?? all.length,
   };
 
   if (isPoster || isAcceptedHelper) {
@@ -284,6 +360,40 @@ function jobCounterparties(job: {
 
 /** Storage and bandwidth are billed per image, so the set has a ceiling. */
 const PHOTO_MAX = 10;
+
+/**
+ * Ceilings on every list endpoint.
+ *
+ * None of these had one. A feed query returned every OPEN job ever posted, the
+ * notification list returned every notification a user had ever received, and
+ * opening a chat returned the entire message history - all of it serialised
+ * into one JSON response on every page load. That is fine with the twenty rows
+ * in this database today and a cliff later, so the cap goes in now while the
+ * numbers are small enough that nobody notices it arriving.
+ */
+const JOB_PAGE_SIZE = 100;
+const NOTIFICATION_PAGE_SIZE = 50;
+const MESSAGE_PAGE_SIZE = 200;
+
+/**
+ * Categories come from the same module the Post a Job form renders, so the
+ * list the server accepts can never drift from the list the UI offers - a
+ * mismatch there rejects a perfectly ordinary job post.
+ */
+const VALID_CATEGORIES = new Set(CATEGORIES.map(c => c.id));
+
+/** Mirrors the three choices on the form, which are upper-cased on submit. */
+const VALID_URGENCIES = new Set(['FLEXIBLE', 'THIS WEEK', 'ASAP']);
+
+/**
+ * Required free-text field: present, a string, and not just whitespace.
+ * Without this a body with no title reached prisma.job.create and came back as
+ * a 500 "Failed to create job", which tells the caller nothing about what was
+ * actually wrong with their request.
+ */
+function requiredText(value: unknown, label: string): string | null {
+  return typeof value === 'string' && value.trim() ? null : `${label} is required`;
+}
 
 /**
  * Photos arrive as an array of Cloudinary URLs. Anything else - a non-array, a
@@ -380,6 +490,29 @@ function tooLong(value: unknown, max: number, label: string) {
     : null;
 }
 
+/**
+ * Total unread messages across every conversation someone is in.
+ *
+ * Shared by the REST endpoint the nav calls once on load and by the socket
+ * push below, so the badge can never disagree with itself depending on which
+ * path produced the number.
+ */
+async function unreadMessageCount(userId: string) {
+  const candidates = await prisma.conversation.findMany({
+    where: { participant_ids: { contains: userId } },
+    select: { id: true, participant_ids: true },
+  });
+  // 'contains' is a substring match on a joined string, so re-check exactly.
+  const ids = candidates
+    .filter(c => c.participant_ids.split(',').includes(userId))
+    .map(c => c.id);
+  if (!ids.length) return 0;
+
+  return prisma.message.count({
+    where: { conversation_id: { in: ids }, sender_id: { not: userId }, read_at: null },
+  });
+}
+
 /** True only if userId is an exact member of the conversation's participant list. */
 async function isParticipant(conversationId: string, userId: string) {
   if (!conversationId) return false;
@@ -400,9 +533,14 @@ const authenticateSocket = async (socket: any, next: (err?: Error) => void) => {
   if (!token) return next(new Error('Missing access token'));
 
   try {
-    const { data, error } = await supabaseAuth.auth.getUser(token);
-    if (error || !data?.user) return next(new Error('Invalid or expired token'));
-    const dbUser = await getOrCreateDbUser(data.user);
+    let authUser = cachedUserFor(token);
+    if (!authUser) {
+      const { data, error } = await supabaseAuth.auth.getUser(token);
+      if (error || !data?.user) return next(new Error('Invalid or expired token'));
+      authUser = data.user;
+      cacheVerifiedUser(token, authUser);
+    }
+    const dbUser = await getOrCreateDbUser(authUser);
     if (dbUser.is_banned) return next(new Error('This account has been suspended'));
     socket.data.user = dbUser;
     next();
@@ -416,9 +554,19 @@ async function startServer() {
 
   const app = express();
   const httpServer = createServer(app);
+
+  // Same origin policy as the REST API below: locked to CORS_ORIGIN when it is
+  // set, open otherwise so local dev and preview deploys keep working. Note
+  // that the handshake still requires a valid token either way - this is
+  // defence in depth, not the actual gate.
+  const socketOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
   const io = new Server(httpServer, {
     cors: {
-      origin: "*",
+      origin: socketOrigins.length ? socketOrigins : '*',
       methods: ["GET", "POST"]
     }
   });
@@ -426,10 +574,58 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   // Security Middleware
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  /**
+   * Content-Security-Policy, in report-only mode unless explicitly enforced.
+   *
+   * A wrong CSP is a white screen, and this one cannot be verified from a
+   * terminal - only a browser enforces it. So it ships as Report-Only: the
+   * browser reports what *would* have been blocked without blocking anything.
+   * Check the console against a real deploy, then set CSP_ENFORCE=true.
+   *
+   * Left off entirely in dev, where Vite needs inline scripts and eval.
+   */
+  const cspDirectives = {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'"],
+    // framer-motion animates through inline style attributes; the Google
+    // Fonts stylesheet is linked from index.html.
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    // Map tiles, Cloudinary uploads and OAuth avatars come from many hosts;
+    // images are the lowest-risk resource type to allow broadly.
+    imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+    connectSrc: [
+      "'self'",
+      'https://*.supabase.co',
+      'wss://*.supabase.co',
+      'https://api.cloudinary.com',
+      'https://res.cloudinary.com',
+      'https://nominatim.openstreetmap.org',
+    ],
+    fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    frameAncestors: ["'none'"],
+  };
+
   app.use(helmet({
-    contentSecurityPolicy: false, // Disable for development to allow Vite
+    contentSecurityPolicy: isProduction
+      ? { directives: cspDirectives, reportOnly: process.env.CSP_ENFORCE !== 'true' }
+      : false, // Vite's dev server needs inline scripts and eval.
   }));
-  app.use(cors());
+
+  /**
+   * Browsers only need to reach this API from the app's own origin. Set
+   * CORS_ORIGIN (comma-separated) in production to lock it down; the default
+   * stays open so local development and preview deploys keep working.
+   */
+  const allowedOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+  app.use(cors(allowedOrigins.length ? { origin: allowedOrigins } : {}));
   app.use(express.json());
 
   // Socket.io Namespaces. Both require a verified token at handshake time.
@@ -508,6 +704,12 @@ async function startServer() {
         });
         if (count > 0) {
           chatNamespace.to(conversationId).emit('messages_read', { conversation_id: conversationId, reader_id: me.id });
+          // Push the reader's new badge total instead of making the nav
+          // re-query it on every navigation. Also makes the dot clear the
+          // instant the thread is opened rather than on the next route change.
+          notificationNamespace
+            .to(me.id)
+            .emit('unread_count', { count: await unreadMessageCount(me.id) });
         }
       } catch (err) {
         console.error('Failed to mark messages read:', err);
@@ -545,9 +747,14 @@ async function startServer() {
         include: {
           poster: { select: PUBLIC_USER_SELECT },
           photos: true,
-          applications: true
+          // Only your own application. This feed excludes your own postings,
+          // so the viewer is never the poster here and jobForViewer would
+          // discard everyone else's rows anyway.
+          applications: { where: { helper_id: me.id } },
+          _count: { select: { applications: true } },
         },
-        orderBy: { created_at: 'desc' }
+        orderBy: { created_at: 'desc' },
+        take: JOB_PAGE_SIZE,
       });
       res.json(jobs.map(job => jobForViewer(job, me.id)));
     } catch (err) {
@@ -591,6 +798,22 @@ async function startServer() {
       return res.status(400).json({ error: 'A location is required' });
     }
 
+    // Presence first, then length. These are all NOT NULL columns, so without
+    // the presence checks a missing field became a Prisma error and a 500.
+    const missing =
+      requiredText(title, 'A title') ??
+      requiredText(description, 'A description') ??
+      requiredText(category, 'A category') ??
+      requiredText(urgency, 'An urgency');
+    if (missing) return res.status(400).json({ error: missing });
+
+    if (!VALID_CATEGORIES.has(category)) {
+      return res.status(400).json({ error: 'Pick one of the listed categories' });
+    }
+    if (!VALID_URGENCIES.has(urgency)) {
+      return res.status(400).json({ error: 'Pick one of the listed urgency options' });
+    }
+
     const lengthError =
       tooLong(title, TITLE_MAX, 'The title') ??
       tooLong(description, DESCRIPTION_MAX, 'The description') ??
@@ -610,13 +833,13 @@ async function startServer() {
       const job = await prisma.job.create({
         data: {
           poster_id: user.id,
-          title,
+          title: title.trim(),
           category,
-          description,
+          description: description.trim(),
           urgency,
           lat: latitude,
           lng: longitude,
-          address,
+          address: address.trim(),
           budget_min: budget.min,
           budget_max: budget.max,
           photos: {
@@ -663,6 +886,7 @@ async function startServer() {
           reviews: { where: { reviewer_id: me.id }, select: { id: true, rating: true } },
         },
         orderBy: { created_at: 'desc' },
+        take: JOB_PAGE_SIZE,
       });
       res.json(jobs.map(job => jobForViewer(job, me.id)));
     } catch (err) {
@@ -685,6 +909,7 @@ async function startServer() {
           reviews: { where: { reviewer_id: me.id }, select: { id: true, rating: true } },
         },
         orderBy: { created_at: 'desc' },
+        take: JOB_PAGE_SIZE,
       });
       // Already the poster, so jobForViewer would return these unchanged.
       res.json(jobs);
@@ -742,9 +967,20 @@ async function startServer() {
         if (!title.trim()) return res.status(400).json({ error: 'A title is required' });
         data.title = title.trim();
       }
-      if (typeof description === 'string') data.description = description;
-      if (typeof category === 'string' && category) data.category = category;
-      if (typeof urgency === 'string' && urgency) data.urgency = urgency;
+      if (typeof description === 'string') data.description = description.trim();
+      if (category !== undefined) {
+        // Same whitelist as creation - an edit is not a way around it.
+        if (!VALID_CATEGORIES.has(category)) {
+          return res.status(400).json({ error: 'Pick one of the listed categories' });
+        }
+        data.category = category;
+      }
+      if (urgency !== undefined) {
+        if (!VALID_URGENCIES.has(urgency)) {
+          return res.status(400).json({ error: 'Pick one of the listed urgency options' });
+        }
+        data.urgency = urgency;
+      }
 
       const locked = job._count.applications > 0;
       const wantsBudget = req.body.budget_min !== undefined || req.body.budget_max !== undefined;
@@ -1196,7 +1432,8 @@ async function startServer() {
       const user = currentUser(req);
       const notifications = await prisma.notification.findMany({
         where: { user_id: user.id },
-        orderBy: { created_at: 'desc' }
+        orderBy: { created_at: 'desc' },
+        take: NOTIFICATION_PAGE_SIZE,
       });
       res.json(notifications);
     } catch (err) {
@@ -1268,15 +1505,34 @@ async function startServer() {
         unreadGroups.map(g => [g.conversation_id, g._count._all])
       );
 
-      // Fetch participants for each conversation manually since they are stored as a string
-      const conversationsWithParticipants = await Promise.all(conversations.map(async (conv) => {
-        const pIds = conv.participant_ids.split(',');
-        const otherId = pIds.find(id => id !== user.id);
-        const otherUser = otherId
-          ? await prisma.user.findUnique({ where: { id: otherId }, select: PUBLIC_USER_SELECT })
-          : null;
-        return { ...conv, otherUser, unread_count: unreadByConversation.get(conv.id) ?? 0 };
-      }));
+      // Participants are stored as a joined string, so the other person has to
+      // be looked up separately - but in ONE query for the whole list. This
+      // was a findUnique per conversation inside a Promise.all, i.e. a round
+      // trip per row: thirty conversations meant thirty queries to draw one
+      // screen.
+      const otherIds = [
+        ...new Set(
+          conversations
+            .map(conv => conv.participant_ids.split(',').find(id => id !== user.id))
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      const others = otherIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: otherIds } },
+            select: PUBLIC_USER_SELECT,
+          })
+        : [];
+      const otherById = new Map(others.map(u => [u.id, u]));
+
+      const conversationsWithParticipants = conversations.map(conv => {
+        const otherId = conv.participant_ids.split(',').find(id => id !== user.id);
+        return {
+          ...conv,
+          otherUser: otherId ? otherById.get(otherId) ?? null : null,
+          unread_count: unreadByConversation.get(conv.id) ?? 0,
+        };
+      });
 
       // Newest activity first, so a conversation someone just replied to rises
       // to the top of the list. Conversations with no messages sort by when
@@ -1301,20 +1557,7 @@ async function startServer() {
    */
   app.get('/api/messages/unread-count', requireAuth, async (req, res) => {
     try {
-      const user = currentUser(req);
-      const candidates = await prisma.conversation.findMany({
-        where: { participant_ids: { contains: user.id } },
-        select: { id: true, participant_ids: true },
-      });
-      // 'contains' is a substring match on a joined string, so re-check exactly.
-      const ids = candidates
-        .filter(c => c.participant_ids.split(',').includes(user.id))
-        .map(c => c.id);
-
-      const count = await prisma.message.count({
-        where: { conversation_id: { in: ids }, sender_id: { not: user.id }, read_at: null },
-      });
-      res.json({ count });
+      res.json({ count: await unreadMessageCount(currentUser(req).id) });
     } catch (err) {
       console.error('Failed to count unread messages:', err);
       res.status(500).json({ error: 'Failed to count unread messages' });
@@ -1330,12 +1573,16 @@ async function startServer() {
         return res.status(403).json({ error: 'You are not a participant in this conversation' });
       }
 
-      const messages = await prisma.message.findMany({
+      // Take the newest N, then flip back to oldest-first for display. Asking
+      // for the first N ascending would pin a long thread to its opening
+      // messages and never show anything recent.
+      const recent = await prisma.message.findMany({
         where: { conversation_id: req.params.id },
         include: { sender: { select: PUBLIC_USER_SELECT } },
-        orderBy: { created_at: 'asc' }
+        orderBy: { created_at: 'desc' },
+        take: MESSAGE_PAGE_SIZE,
       });
-      res.json(messages);
+      res.json(recent.reverse());
     } catch (err) {
       console.error('Failed to fetch messages:', err);
       res.status(500).json({ error: 'Failed to fetch messages' });

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Button, GlassCard } from '../../components/UI';
 import { useToast } from '../../components/Toast';
-import { Mail, Lock, Chrome, Facebook, Apple } from 'lucide-react';
+import { Mail, Lock, Chrome } from 'lucide-react';
 
 export const SignIn: React.FC = () => {
   const navigate = useNavigate();
@@ -28,6 +28,34 @@ export const SignIn: React.FC = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [navigate]);
 
+  /**
+   * Supabase returns operator-facing strings ("email rate limit exceeded",
+   * "over_email_send_rate_limit"). Showing those verbatim tells the person
+   * trying to sign up nothing about what to do next.
+   */
+  const friendlyAuthError = (message: string) => {
+    const m = message.toLowerCase();
+    if (m.includes('rate limit') || m.includes('too many')) {
+      return 'Too many attempts just now. Wait a minute and try again.';
+    }
+    if (m.includes('invalid login credentials')) {
+      return 'That email and password do not match an account.';
+    }
+    if (m.includes('email not confirmed')) {
+      return 'Check your inbox and click the confirmation link before signing in.';
+    }
+    if (m.includes('already registered') || m.includes('already been registered')) {
+      return 'There is already an account with that email. Try signing in instead.';
+    }
+    if (m.includes('password')) {
+      return 'That password is too short - use at least six characters.';
+    }
+    if (m.includes('provider is not enabled') || m.includes('unsupported provider')) {
+      return 'That sign-in method is not available yet. Use email, or continue with Google.';
+    }
+    return message;
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -48,7 +76,7 @@ export const SignIn: React.FC = () => {
         },
       });
       if (error) {
-        setError(error.message);
+        setError(friendlyAuthError(error.message));
         setIsLoading(false);
       } else {
         // Supabase might require email confirmation
@@ -61,7 +89,7 @@ export const SignIn: React.FC = () => {
         password,
       });
       if (error) {
-        setError(error.message);
+        setError(friendlyAuthError(error.message));
         setIsLoading(false);
       } else {
         navigate('/');
@@ -69,7 +97,7 @@ export const SignIn: React.FC = () => {
     }
   };
 
-  const handleOAuthSignIn = async (provider: 'google' | 'facebook' | 'apple') => {
+  const handleOAuthSignIn = async (provider: 'google') => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -77,9 +105,9 @@ export const SignIn: React.FC = () => {
         skipBrowserRedirect: true,
       }
     });
-    
+
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error.message));
       return;
     }
 
@@ -205,17 +233,20 @@ export const SignIn: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <Button variant="secondary" className="p-3" onClick={() => handleOAuthSignIn('google')}>
-              <Chrome className="w-5 h-5" />
-            </Button>
-            <Button variant="secondary" className="p-3" onClick={() => handleOAuthSignIn('facebook')}>
-              <Facebook className="w-5 h-5" />
-            </Button>
-            <Button variant="secondary" className="p-3" onClick={() => handleOAuthSignIn('apple')}>
-              <Apple className="w-5 h-5" />
-            </Button>
-          </div>
+          {/* Google only, because Google is the only provider actually enabled
+              on the Supabase project. The Facebook and Apple buttons that used
+              to sit here looked identical and failed with "provider is not
+              enabled" - an offered sign-in method that cannot work is worse
+              than one that is not offered. Add them back alongside turning
+              them on in Authentication > Providers. */}
+          <Button
+            variant="secondary"
+            className="w-full gap-3"
+            onClick={() => handleOAuthSignIn('google')}
+          >
+            <Chrome className="w-5 h-5" />
+            Continue with Google
+          </Button>
 
           <p className="mt-8 text-center text-sm text-muted">
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}

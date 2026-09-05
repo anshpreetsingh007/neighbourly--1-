@@ -45,7 +45,15 @@ export const Layout: React.FC = () => {
       // the dot immediately, without waiting for the next refetch.
       if (notification?.type === 'MESSAGE') setUnreadMessages(prev => prev + 1);
     });
-    return () => { socket.off('notification'); };
+    // Pushed by the server whenever this user marks a thread read, which is
+    // what clears the dot on the way out of a conversation.
+    socket.on('unread_count', ({ count }: { count: number }) => {
+      setUnreadMessages(count ?? 0);
+    });
+    return () => {
+      socket.off('notification');
+      socket.off('unread_count');
+    };
   }, [socket]);
 
   /**
@@ -53,9 +61,11 @@ export const Layout: React.FC = () => {
    * which never cleared: opening a thread marks the *messages* read, and the
    * notification row stays unread forever. Count the messages themselves.
    *
-   * Refetched on every navigation, which is what clears the dot on the way out
-   * of a thread - ChatThread emits mark_read on open, so by the time you are
-   * back on another screen the server count has already dropped.
+   * Fetched once per session. It used to refetch on every navigation to clear
+   * the dot after reading a thread, which meant a conversation scan and a
+   * message count on every single route change in the app. The server pushes
+   * the new total over the socket instead - same result, and it lands the
+   * moment the thread is opened rather than on the next navigation.
    */
   useEffect(() => {
     if (!user) return;
@@ -63,7 +73,7 @@ export const Layout: React.FC = () => {
       .get('/api/messages/unread-count')
       .then(({ data }) => setUnreadMessages(data.count ?? 0))
       .catch(() => {});
-  }, [user, location.pathname]);
+  }, [user]);
 
   const hasUnreadMessages = unreadMessages > 0;
   const hasUnreadOther = notifications.some(n => n.type !== 'MESSAGE' && !n.read_at);

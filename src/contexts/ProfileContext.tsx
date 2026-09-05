@@ -3,9 +3,16 @@ import axios from 'axios';
 import { useAuth } from './AuthContext';
 
 interface ProfileContextType {
-  /** null while loading, or once signed out. */
+  /** null while loading, once signed out, or if the fetch failed. */
   profile: any | null;
   isLoading: boolean;
+  /**
+   * True when the last attempt failed. Callers must not read a null profile as
+   * "this account has no profile" - see AuthGuard, which would otherwise send
+   * someone with a perfectly complete profile to the setup screen the moment
+   * one request lost the network.
+   */
+  loadFailed: boolean;
   /** Re-fetches and returns the fresh profile - call after any write (Settings,
    *  ProfileSetup, a quick avatar change) so every screen using this context
    *  updates immediately instead of showing stale data until next reload. */
@@ -29,19 +36,23 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const { user } = useAuth();
   const [profile, setProfile] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const refetch = useCallback(async () => {
     if (!user) {
       setProfile(null);
+      setLoadFailed(false);
       setIsLoading(false);
       return null;
     }
     try {
       const { data } = await axios.get('/api/users/me');
       setProfile(data);
+      setLoadFailed(false);
       return data;
     } catch (err) {
       console.error('Failed to load profile:', err);
+      setLoadFailed(true);
       return null;
     } finally {
       setIsLoading(false);
@@ -57,7 +68,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [user?.id]);
 
   return (
-    <ProfileContext.Provider value={{ profile, isLoading, refetch }}>
+    <ProfileContext.Provider value={{ profile, isLoading, loadFailed, refetch }}>
       {children}
     </ProfileContext.Provider>
   );

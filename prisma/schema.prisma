@@ -62,6 +62,14 @@ model Job {
   photos        JobPhoto[]
   payments      Payment[]
   reviews       Review[]
+
+  // Postgres indexes primary keys and unique columns automatically but NOT
+  // foreign keys, so without these every feed load, every "my jobs" query and
+  // every applicant lookup is a sequential scan of the whole table.
+  // The browse feed: status = OPEN, poster_id != me, newest first.
+  @@index([status, created_at])
+  // Your own listings, and the poster check on every job mutation.
+  @@index([poster_id, status])
 }
 
 model JobPhoto {
@@ -70,6 +78,8 @@ model JobPhoto {
   url    String
   order  Int    @default(0)
   job    Job    @relation(fields: [job_id], references: [id])
+
+  @@index([job_id])
 }
 
 model Application {
@@ -82,6 +92,11 @@ model Application {
   created_at     DateTime @default(now())
   helper         User     @relation(fields: [helper_id], references: [id])
   job            Job      @relation(fields: [job_id], references: [id])
+
+  // "has this person already applied" runs on every apply.
+  @@index([job_id, helper_id])
+  // The Applied tab: every job this helper has applied to.
+  @@index([helper_id])
 }
 
 model Conversation {
@@ -91,6 +106,9 @@ model Conversation {
   created_at      DateTime  @default(now())
   job             Job?      @relation(fields: [job_id], references: [id])
   messages        Message[]
+
+  // Find-or-create on apply looks up by job plus the sorted participant pair.
+  @@index([job_id, participant_ids])
 }
 
 model Message {
@@ -106,6 +124,11 @@ model Message {
   created_at      DateTime     @default(now())
   sender          User         @relation(fields: [sender_id], references: [id])
   conversation    Conversation @relation(fields: [conversation_id], references: [id])
+
+  // Loading a thread, oldest first.
+  @@index([conversation_id, created_at])
+  // The unread badge: messages in my conversations, not sent by me, unread.
+  @@index([conversation_id, sender_id, read_at])
 }
 
 model Payment {
@@ -122,6 +145,10 @@ model Payment {
   payee                    User     @relation("PayeePayments", fields: [payee_id], references: [id])
   payer                    User     @relation("PayerPayments", fields: [payer_id], references: [id])
   job                      Job      @relation(fields: [job_id], references: [id])
+
+  @@index([job_id])
+  @@index([payee_id])
+  @@index([payer_id])
 }
 
 model Review {
@@ -139,10 +166,12 @@ model Review {
   is_published          Boolean  @default(false)
   created_at            DateTime @default(now())
   reviewee              User     @relation("Reviewee", fields: [reviewee_id], references: [id])
-
-  @@unique([job_id, reviewer_id])
   reviewer              User     @relation("Reviewer", fields: [reviewer_id], references: [id])
   job                   Job      @relation(fields: [job_id], references: [id])
+
+  @@unique([job_id, reviewer_id])
+  // The rating average and review list on a profile.
+  @@index([reviewee_id, is_published])
 }
 
 model Notification {
@@ -155,6 +184,9 @@ model Notification {
   read_at    DateTime?
   created_at DateTime  @default(now())
   user       User      @relation(fields: [user_id], references: [id])
+
+  // The notification list, newest first - fetched by the nav on every load.
+  @@index([user_id, created_at])
 }
 
 model Report {
@@ -166,4 +198,8 @@ model Report {
   status      String   @default("PENDING")
   created_at  DateTime @default(now())
   reporter    User     @relation(fields: [reporter_id], references: [id])
+
+  // The moderation queue, once there is one to read it.
+  @@index([status, created_at])
+  @@index([reporter_id])
 }
